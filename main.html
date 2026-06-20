@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airburster</title>
+<style>
+  :root{
+    --bg:#14141a;
+    --panel:#1f2230;
+    --panel2:#262a3a;
+    --text:#e8e6e0;
+    --text2:#9aa0b0;
+    --accent:#C8922A;
+    --air:#5B9BD5;
+    --border-radius-md:8px;
+    --font-mono:'SFMono-Regular',ui-monospace,'Menlo','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-mono);
+    padding:20px;
+    min-height:100vh;
+  }
+  .app{max-width:1080px;margin:0 auto}
+  h1{
+    font-size:18px;font-weight:600;letter-spacing:.04em;margin-bottom:2px;
+  }
+  .subtitle{font-size:12px;color:var(--text2);margin-bottom:18px}
+  .wrap{
+    display:grid;grid-template-columns:170px 1fr 200px;gap:14px;align-items:start;
+  }
+  .controls{display:flex;flex-direction:column;gap:10px}
+  .ctrl-label{font-size:11px;color:var(--text2);letter-spacing:.04em;text-transform:uppercase}
+  .ctrl-val{font-size:18px;font-weight:500;color:var(--text);line-height:1}
+  .ctrl-unit{font-size:11px;color:var(--text2);margin-left:2px}
+  .stat-box{background:var(--panel);border-radius:var(--border-radius-md);padding:8px 11px}
+  input[type=range]{width:100%;margin:5px 0 2px;accent-color:var(--accent);cursor:pointer}
+  canvas{display:block;max-width:100%}
+  .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--text2)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px}
+  .stat-item{background:var(--panel);border-radius:var(--border-radius-md);padding:7px 9px}
+  .stat-n{font-size:16px;font-weight:500;color:var(--text)}
+  .stat-l{font-size:10px;color:var(--text2);margin-top:1px}
+  .view-label{font-size:11px;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;text-align:center;margin-bottom:4px}
+  .view-foot{font-size:10px;color:var(--text2);text-align:center;margin-top:4px}
+  .grid-scroll{overflow:auto;border-radius:var(--border-radius-md);background:var(--panel2);max-height:560px}
+  .swatch{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
+  .warn{font-size:10px;color:var(--accent);padding:2px 0;display:none}
+  @media(max-width:760px){
+    .wrap{grid-template-columns:1fr}
+    .grid-scroll{max-height:400px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>PF2e Cone Calculator</h1>
+  <div class="subtitle">Official grid-intersection templates · with elevation &amp; tilt · origin = bottom-right grid corner</div>
+
+  <div class="wrap">
+    <div class="controls">
+      <div class="stat-box">
+        <div class="ctrl-label">Cone size</div>
+        <div><span class="ctrl-val" id="vCone">30</span><span class="ctrl-unit">ft</span></div>
+        <input type="range" id="sCone" min="1" max="5" step="1" value="2">
+        <div class="ticks"><span>15</span><span>30</span><span>60</span><span>90</span><span>120</span></div>
+      </div>
+      <div class="stat-box">
+        <div class="ctrl-label">Caster height</div>
+        <div><span class="ctrl-val" id="vHeight">0</span><span class="ctrl-unit">ft</span></div>
+        <input type="range" id="sHeight" min="0" max="120" step="5" value="0">
+      </div>
+      <div class="stat-box">
+        <div class="ctrl-label">Tilt <span id="tiltDir" style="font-size:10px;color:var(--text2)">(level)</span></div>
+        <div><span class="ctrl-val" id="vTilt">0</span><span class="ctrl-unit">°</span></div>
+        <input type="range" id="sTilt" min="-90" max="90" step="5" value="0">
+        <div class="ticks"><span>↑90°</span><span>level</span><span>↓90°</span></div>
+      </div>
+      <div class="stat-box">
+        <div class="ctrl-label">Direction</div>
+        <div><span class="ctrl-val" id="vDir">E</span> <span id="dirType" style="font-size:10px;color:var(--text2)">orthogonal</span></div>
+        <input type="range" id="sDir" min="0" max="7" step="1" value="2">
+        <div class="ticks"><span>N</span><span>NE</span><span>E</span><span>SE</span><span>S</span><span>SW</span><span>W</span><span>NW</span></div>
+      </div>
+      <div class="stat-box">
+        <div class="ctrl-label">Zoom</div>
+        <input type="range" id="sZoom" min="6" max="36" step="2" value="16">
+        <div style="font-size:10px;color:var(--text2)"><span id="vZoom">16</span> px / 5ft</div>
+      </div>
+      <div class="stats">
+        <div class="stat-item"><div class="stat-n" id="sGndSq">0</div><div class="stat-l">ground sq.</div></div>
+        <div class="stat-item"><div class="stat-n" id="sAirSq">0</div><div class="stat-l">air sq.</div></div>
+        <div class="stat-item"><div class="stat-n" id="sGndR">0ft</div><div class="stat-l">gnd. reach</div></div>
+        <div class="stat-item"><div class="stat-n" id="sFwdR">0ft</div><div class="stat-l">axis reach</div></div>
+      </div>
+      <div class="warn" id="clearNote">⚠ Cone clears the ground entirely</div>
+    </div>
+
+    <div style="min-width:0">
+      <div class="view-label">Top-down view</div>
+      <div class="grid-scroll"><canvas id="gridCanvas" width="420" height="420"></canvas></div>
+      <div class="view-foot">
+        <span class="swatch" style="background:#C8922A;opacity:.75;margin-right:3px"></span>ground
+        <span class="swatch" style="background:#5B9BD5;opacity:.5;margin:0 3px 0 10px"></span>air
+        &nbsp;· origin = grid corner
+      </div>
+    </div>
+
+    <div>
+      <div class="view-label">Side elevation</div>
+      <canvas id="sideCanvas" width="200" height="420"></canvas>
+      <div class="view-foot">45° half-angle · negative tilt = up</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CONE_SIZES=[15,30,60,90,120];
+const DIRS=[
+  {name:'N', vx:0, vy:1,  diag:false},
+  {name:'NE',vx:1, vy:1,  diag:true},
+  {name:'E', vx:1, vy:0,  diag:false},
+  {name:'SE',vx:1, vy:-1, diag:true},
+  {name:'S', vx:0, vy:-1, diag:false},
+  {name:'SW',vx:-1,vy:-1, diag:true},
+  {name:'W', vx:-1,vy:0,  diag:false},
+  {name:'NW',vx:-1,vy:1,  diag:true},
+];
+const HALF=Math.PI/4;
+
+const $=id=>document.getElementById(id);
+
+const sCone=$('sCone'), sHeight=$('sHeight'), sTilt=$('sTilt'),
+      sDir=$('sDir'), sZoom=$('sZoom');
+
+function getParams(){
+  return { coneL:CONE_SIZES[+sCone.value-1], H:+sHeight.value, tilt:+sTilt.value,
+           dirIdx:+sDir.value, zoom:+sZoom.value };
+}
+function updateLabels(){
+  const p=getParams();
+  $('vCone').textContent=p.coneL;
+  $('vHeight').textContent=p.H;
+  $('vTilt').textContent=Math.abs(p.tilt);
+  $('tiltDir').textContent=p.tilt<0?'(up)':p.tilt>0?'(down)':'(level)';
+  $('vDir').textContent=DIRS[p.dirIdx].name;
+  $('dirType').textContent=DIRS[p.dirIdx].diag?'diagonal':'orthogonal';
+  $('vZoom').textContent=p.zoom;
+}
+
+// Squares (corner-indexed) whose center falls inside a wedge of radius R.
+// inWedge(mx,my) selects the angular slice; cy range bounds the search box.
+function wedgeTemplate(R, cyMin, cyMax, inWedge){
+  const cells=[];
+  for(let cx=0; cx<=R; cx++){
+    for(let cy=cyMin; cy<=cyMax; cy++){
+      const mx=cx+0.5, my=cy+0.5;
+      if(!inWedge(mx,my)) continue;
+      if(Math.hypot(mx,my) > R + 1e-9) continue;
+      cells.push([cx,cy]);
+    }
+  }
+  return cells;
+}
+// Canonical East orthogonal template: ±45° wedge about the +x axis.
+const canonicalTemplate = R =>
+  wedgeTemplate(R, -R-1, R, (mx,my)=>Math.abs(my) <= mx + 1e-9);
+// Canonical NE diagonal template: wedge 0°..90°.
+const diagonalTemplate = R =>
+  wedgeTemplate(R, 0, R, (mx,my)=>{
+    const a=Math.atan2(my,mx);
+    return a >= -1e-9 && a <= Math.PI/2 + 1e-9;
+  });
+// Rotate corner-indexed squares 90°*k CCW about the intersection origin.
+function rot90(cells,k){
+  k=((k%4)+4)%4;
+  return cells.map(([x,y])=>{
+    let nx=x, ny=y;
+    for(let i=0;i<k;i++){ const tx=-ny-1, ty=nx; nx=tx; ny=ty; }
+    return [nx,ny];
+  });
+}
+function groundTemplate(coneL, dirIdx){
+  const R=coneL/5;
+  const d=DIRS[dirIdx];
+  // DIRS runs clockwise in 45° steps; rot90 turns CCW. The canonical
+  // orientation lives at idx 2 (E) for orthogonal, idx 1 (NE) for diagonal,
+  // so the quarter-turn count follows arithmetically from dirIdx.
+  const base = d.diag ? diagonalTemplate(R) : canonicalTemplate(R);
+  const anchor = d.diag ? 1 : 2;
+  const k = ((anchor - dirIdx) / 2 % 4 + 4) % 4;
+  return rot90(base, k);
+}
+
+// Is a point (horizontal ft out, vertical ft up=negative) inside the tilted
+// cone? Returns the 3D slant distance when in, else null.
+function coneHit(horzFt, vert, tiltRad, coneL){
+  const vertAngle=Math.atan2(-vert,horzFt);
+  const dist3d=Math.hypot(horzFt,vert);
+  const inWedge = vertAngle>=tiltRad-HALF-1e-9 && vertAngle<=tiltRad+HALF+1e-9;
+  return (inWedge && dist3d<=coneL+1e-6) ? dist3d : null;
+}
+
+function computeCells(coneL,H,tilt,dirIdx){
+  const tiltRad=tilt*Math.PI/180;
+  const tmpl=groundTemplate(coneL,dirIdx);
+  const cells=[];
+  // Squares the cone touches at ground level (z=0).
+  for(const [cx,cy] of tmpl){
+    const horzFt=Math.hypot(cx+0.5,cy+0.5)*5;
+    const slant=coneHit(horzFt,-H,tiltRad,coneL);
+    if(slant!==null) cells.push({cx,cy,hitsGround:true,horzFt,slant});
+  }
+  // Squares only covered above the ground (tilted/elevated cone).
+  if(H>0||tilt!==0){
+    const seen=new Set(cells.map(c=>c.cx+','+c.cy));
+    for(const [cx,cy] of tmpl){
+      if(seen.has(cx+','+cy)) continue;
+      const horzFt=Math.hypot(cx+0.5,cy+0.5)*5;
+      let air=false;
+      for(let z=5; z<=H+coneL+5; z+=5){
+        if(coneHit(horzFt,z-H,tiltRad,coneL)!==null){air=true;break;}
+      }
+      if(air) cells.push({cx,cy,hitsGround:false,horzFt,slant:0});
+    }
+  }
+  return cells;
+}
+
+function drawGrid(cells,p){
+  const c=$('gridCanvas'), ctx=c.getContext('2d');
+  const CELL=p.zoom;
+  const R=p.coneL/5;
+  const span=(R+3)*2;
+  const px=Math.round(span*CELL);
+  c.width=px; c.height=px;
+  const W=c.width,H=c.height;
+  const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0', lbl='rgba(255,255,255,0.42)';
+  const ox=W/2, oy=H/2;
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle=grid; ctx.lineWidth=0.5;
+  const nLines=Math.ceil(span)+2;
+  for(let i=-nLines;i<=nLines;i++){
+    const x=ox+i*CELL; ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+    const y=oy+i*CELL; ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
+  for(const cc of cells){
+    const sx=ox+cc.cx*CELL;
+    const sy=oy-(cc.cy+1)*CELL;
+    ctx.globalAlpha=cc.hitsGround?0.75:0.45;
+    ctx.fillStyle=cc.hitsGround?'#C8922A':'#5B9BD5';
+    ctx.fillRect(sx+0.5,sy+0.5,CELL-1,CELL-1);
+  }
+  ctx.globalAlpha=1;
+  ctx.fillStyle=lbl; ctx.font='9px var(--font-mono)'; ctx.textAlign='center';
+  const lblStep=R>6?Math.max(1,Math.round(R/5)):1;
+  for(let i=1;i<=Math.ceil(R);i++){
+    if(i%lblStep!==0) continue;
+    ctx.fillText(i*5+'ft', ox+i*CELL, oy-2);
+  }
+  ctx.fillStyle=cast;
+  ctx.beginPath();ctx.arc(ox,oy,3.5,0,7);ctx.fill();
+  ctx.strokeStyle=cast; ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(ox-6,oy);ctx.lineTo(ox+6,oy);
+  ctx.moveTo(ox,oy-6);ctx.lineTo(ox,oy+6);ctx.stroke();
+}
+
+function drawSide(cells,p){
+  const c=$('sideCanvas'), ctx=c.getContext('2d');
+  c.width=200; c.height=420;
+  const W=c.width,Hc=c.height; ctx.clearRect(0,0,W,Hc);
+  const bg='#1a1d2a', grid='rgba(255,255,255,0.07)', gnd='rgba(200,146,42,0.6)',
+        coneF='rgba(200,146,42,0.18)', coneB='rgba(200,146,42,0.8)',
+        axis='rgba(255,255,255,0.28)', cast='#e8e6e0', lbl='rgba(255,255,255,0.45)',
+        arc='rgba(91,155,213,0.9)';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,Hc);
+  const {coneL,H,tilt}=p, tiltRad=tilt*Math.PI/180;
+  const range=Math.max(coneL+H+10,40), scale=Math.min((Hc*0.75)/range,3.8);
+  const gY=Hc*0.76, cX=48, cY=gY-H*scale, L=coneL*scale;
+  ctx.strokeStyle=grid; ctx.lineWidth=0.5;
+  for(let i=-8;i<32;i++){const y=gY-i*5*scale; if(y<-5||y>Hc+5)continue; ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let i=0;i<32;i++){const x=cX+i*5*scale; if(x>W+5)break; ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,Hc);ctx.stroke();}
+  ctx.strokeStyle=gnd; ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(0,gY);ctx.lineTo(W,gY);ctx.stroke();
+  const topA=tiltRad-HALF, botA=tiltRad+HALF;
+  ctx.fillStyle=coneF; ctx.beginPath(); ctx.moveTo(cX,cY);
+  ctx.lineTo(cX+Math.cos(topA)*L,cY+Math.sin(topA)*L);
+  ctx.arc(cX,cY,L,topA,botA); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle=coneB; ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(topA)*L,cY+Math.sin(topA)*L);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(botA)*L,cY+Math.sin(botA)*L);ctx.stroke();
+  const g=cells.filter(c=>c.hitsGround);
+  if(g.length){
+    const mn=Math.min(...g.map(c=>c.horzFt)), mx=Math.max(...g.map(c=>c.horzFt));
+    ctx.strokeStyle='#C8922A'; ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(cX+mn*scale,gY);ctx.lineTo(cX+mx*scale,gY);ctx.stroke();
+  }
+  ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(tiltRad)*L,cY+Math.sin(tiltRad)*L);ctx.stroke();
+  ctx.setLineDash([]);
+  if(H>0){
+    ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX,gY);ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=lbl; ctx.font='10px var(--font-mono)'; ctx.textAlign='right';
+    ctx.fillText(H+'ft',cX-5,(cY+gY)/2+4);
+  }
+  const aR=Math.min(L*0.28,30);
+  ctx.strokeStyle=arc; ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(cX,cY,aR,topA,tiltRad);ctx.stroke();
+  ctx.beginPath();ctx.arc(cX,cY,aR,tiltRad,botA);ctx.stroke();
+  ctx.fillStyle=arc; ctx.font='500 10px var(--font-mono)'; ctx.textAlign='center';
+  const tm=topA+HALF/2, bm=tiltRad+HALF/2;
+  ctx.fillText('45°',cX+(aR+8)*Math.cos(tm),cY+(aR+8)*Math.sin(tm));
+  ctx.fillText('45°',cX+(aR+8)*Math.cos(bm),cY+(aR+8)*Math.sin(bm));
+  if(tilt!==0){
+    ctx.strokeStyle=axis; ctx.lineWidth=0.8; const tR=aR*1.9;
+    ctx.beginPath();
+    if(tilt>0)ctx.arc(cX,cY,tR,0,tiltRad); else ctx.arc(cX,cY,tR,tiltRad,0);
+    ctx.stroke();
+    ctx.fillStyle=lbl; ctx.font='10px var(--font-mono)'; ctx.textAlign='left';
+    const tmid=tiltRad/2;
+    ctx.fillText(Math.abs(tilt)+'°',cX+(tR+5)*Math.cos(tmid),cY+(tR+5)*Math.sin(tmid)+4);
+  }
+  ctx.fillStyle=cast; ctx.beginPath();ctx.arc(cX,cY,4,0,7);ctx.fill();
+  ctx.fillStyle=lbl; ctx.font='9px var(--font-mono)'; ctx.textAlign='right';
+  const step=[5,10,20,30].find(s=>s*scale>16)||30;
+  for(let i=-3;i<=Math.ceil((H+coneL)/step)+2;i++){
+    const fy=gY-i*step*scale; if(fy<2||fy>Hc-2)continue;
+    ctx.fillText(i*step+'ft',cX-7,fy+3);
+  }
+}
+
+function updateStats(cells,p){
+  const g=cells.filter(c=>c.hitsGround), a=cells.filter(c=>!c.hitsGround);
+  const mg=g.reduce((m,c)=>Math.max(m,c.horzFt),0), ms=cells.reduce((m,c)=>Math.max(m,c.slant),0);
+  $('sGndSq').textContent=g.length;
+  $('sAirSq').textContent=a.length;
+  $('sGndR').textContent=Math.round(mg)+'ft';
+  $('sFwdR').textContent=Math.round(ms)+'ft';
+  $('clearNote').style.display=(g.length===0&&p.H>0)?'block':'none';
+}
+
+function redraw(){
+  updateLabels();
+  const p=getParams();
+  const cells=computeCells(p.coneL,p.H,p.tilt,p.dirIdx);
+  drawGrid(cells,p); drawSide(cells,p); updateStats(cells,p);
+}
+[sCone,sHeight,sTilt,sDir,sZoom].forEach(s=>s.addEventListener('input',redraw));
+redraw();
+</script>
+</body>
+</html>
