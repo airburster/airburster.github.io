@@ -151,80 +151,46 @@ function updateLabels(){
   $('vZoom').textContent=p.zoom;
 }
 
-// Squares (corner-indexed) whose center falls inside a wedge of radius R.
-// inWedge(mx,my) selects the angular slice; cy range bounds the search box.
-function wedgeTemplate(R, cyMin, cyMax, inWedge){
-  const cells=[];
-  for(let cx=0; cx<=R; cx++){
-    for(let cy=cyMin; cy<=cyMax; cy++){
-      const mx=cx+0.5, my=cy+0.5;
-      if(!inWedge(mx,my)) continue;
-      if(Math.hypot(mx,my) > R + 1e-9) continue;
-      cells.push([cx,cy]);
-    }
-  }
-  return cells;
-}
-// Canonical East orthogonal template: ±45° wedge about the +x axis.
-const canonicalTemplate = R =>
-  wedgeTemplate(R, -R-1, R, (mx,my)=>Math.abs(my) <= mx + 1e-9);
-// Canonical NE diagonal template: wedge 0°..90°.
-const diagonalTemplate = R =>
-  wedgeTemplate(R, 0, R, (mx,my)=>{
-    const a=Math.atan2(my,mx);
-    return a >= -1e-9 && a <= Math.PI/2 + 1e-9;
-  });
-// Rotate corner-indexed squares 90°*k CCW about the intersection origin.
-function rot90(cells,k){
-  k=((k%4)+4)%4;
-  return cells.map(([x,y])=>{
-    let nx=x, ny=y;
-    for(let i=0;i<k;i++){ const tx=-ny-1, ty=nx; nx=tx; ny=ty; }
-    return [nx,ny];
-  });
-}
-function groundTemplate(coneL, dirIdx){
-  const R=coneL/5;
-  const d=DIRS[dirIdx];
-  // DIRS runs clockwise in 45° steps; rot90 turns CCW. The canonical
-  // orientation lives at idx 2 (E) for orthogonal, idx 1 (NE) for diagonal,
-  // so the quarter-turn count follows arithmetically from dirIdx.
-  const base = d.diag ? diagonalTemplate(R) : canonicalTemplate(R);
-  const anchor = d.diag ? 1 : 2;
-  const k = ((anchor - dirIdx) / 2 % 4 + 4) % 4;
-  return rot90(base, k);
-}
+const COS_HALF=Math.cos(HALF); // a point is in-cone when its axis angle ≤ 45°
 
-// Is a point (horizontal ft out, vertical ft up=negative) inside the tilted
-// cone? Returns the 3D slant distance when in, else null.
-function coneHit(horzFt, vert, tiltRad, coneL){
-  const vertAngle=Math.atan2(-vert,horzFt);
-  const dist3d=Math.hypot(horzFt,vert);
-  const inWedge = vertAngle>=tiltRad-HALF-1e-9 && vertAngle<=tiltRad+HALF+1e-9;
-  return (inWedge && dist3d<=coneL+1e-6) ? dist3d : null;
+// Unit axis of the cone from compass direction + tilt (tilt>0 = downward).
+// Level → horizontal in the compass direction; ±90° → straight up/down.
+function coneAxis(tiltRad, dirIdx){
+  const d=DIRS[dirIdx], len=Math.hypot(d.vx,d.vy)||1, c=Math.cos(tiltRad);
+  return { x:c*d.vx/len, y:c*d.vy/len, z:-Math.sin(tiltRad) };
+}
+// Is the point at offset (X,Y) horizontally and vz vertically (relative to the
+// caster) inside the cone? Returns the 3D slant distance when in, else null.
+function coneHit(X, Y, vz, axis, coneL){
+  const dist3d=Math.hypot(X,Y,vz);
+  if(dist3d > coneL+1e-6) return null;
+  const cosAng=(X*axis.x + Y*axis.y + vz*axis.z)/dist3d;
+  return cosAng >= COS_HALF-1e-9 ? dist3d : null;
 }
 
 function computeCells(coneL,H,tilt,dirIdx){
   const tiltRad=tilt*Math.PI/180;
-  const tmpl=groundTemplate(coneL,dirIdx);
+  const axis=coneAxis(tiltRad,dirIdx);
+  const R=coneL/5, lim=Math.ceil(R);
   const cells=[];
-  // Squares the cone touches at ground level (z=0).
-  for(const [cx,cy] of tmpl){
-    const horzFt=Math.hypot(cx+0.5,cy+0.5)*5;
-    const slant=coneHit(horzFt,-H,tiltRad,coneL);
-    if(slant!==null) cells.push({cx,cy,hitsGround:true,horzFt,slant});
-  }
-  // Squares only covered above the ground (tilted/elevated cone).
-  if(H>0||tilt!==0){
-    const seen=new Set(cells.map(c=>c.cx+','+c.cy));
-    for(const [cx,cy] of tmpl){
-      if(seen.has(cx+','+cy)) continue;
-      const horzFt=Math.hypot(cx+0.5,cy+0.5)*5;
-      let air=false;
-      for(let z=5; z<=H+coneL+5; z+=5){
-        if(coneHit(horzFt,z-H,tiltRad,coneL)!==null){air=true;break;}
+  // Scan every square within horizontal reach (slant ≥ horizontal distance, so
+  // anything in-cone lies within R). One true 3D cone test, all directions.
+  for(let cx=-lim-1; cx<=lim; cx++){
+    for(let cy=-lim-1; cy<=lim; cy++){
+      const mx=cx+0.5, my=cy+0.5;
+      if(Math.hypot(mx,my) > R+1e-9) continue;
+      const X=mx*5, Y=my*5, horzFt=Math.hypot(X,Y);
+      // Ground level (z=0): the cone reaches the floor here.
+      const slant=coneHit(X,Y,-H,axis,coneL);
+      if(slant!==null){ cells.push({cx,cy,hitsGround:true,horzFt,slant}); continue; }
+      // Otherwise, is the square covered anywhere above the ground?
+      if(H>0||tilt!==0){
+        for(let z=5; z<=H+coneL+5; z+=5){
+          if(coneHit(X,Y,z-H,axis,coneL)!==null){
+            cells.push({cx,cy,hitsGround:false,horzFt,slant:0}); break;
+          }
+        }
       }
-      if(air) cells.push({cx,cy,hitsGround:false,horzFt,slant:0});
     }
   }
   return cells;
