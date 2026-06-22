@@ -105,14 +105,14 @@
       <div class="view-foot">
         <span class="swatch" style="background:#C8922A;opacity:.75;margin-right:3px"></span>ground
         <span class="swatch" style="background:#5B9BD5;opacity:.5;margin:0 3px 0 10px"></span>air
-        &nbsp;· origin = grid corner
+        &nbsp;· 1 square = 5 ft · origin = grid corner
       </div>
     </div>
 
     <div>
       <div class="view-label">Side elevation</div>
       <canvas id="sideCanvas" width="200" height="420"></canvas>
-      <div class="view-foot">45° half-angle · negative tilt = up</div>
+      <div class="view-foot">cross-section · 1 square = 5 ft · negative tilt = up</div>
     </div>
   </div>
 </div>
@@ -204,7 +204,7 @@ function drawGrid(cells,p){
   const px=Math.round(span*CELL);
   c.width=px; c.height=px;
   const W=c.width,H=c.height;
-  const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0', lbl='rgba(255,255,255,0.42)';
+  const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0';
   const ox=W/2, oy=H/2;
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
   ctx.strokeStyle=grid; ctx.lineWidth=0.5;
@@ -221,12 +221,6 @@ function drawGrid(cells,p){
     ctx.fillRect(sx+0.5,sy+0.5,CELL-1,CELL-1);
   }
   ctx.globalAlpha=1;
-  ctx.fillStyle=lbl; ctx.font='9px var(--font-mono)'; ctx.textAlign='center';
-  const lblStep=R>6?Math.max(1,Math.round(R/5)):1;
-  for(let i=1;i<=Math.ceil(R);i++){
-    if(i%lblStep!==0) continue;
-    ctx.fillText(i*5+'ft', ox+i*CELL, oy-2);
-  }
   ctx.fillStyle=cast;
   ctx.beginPath();ctx.arc(ox,oy,3.5,0,7);ctx.fill();
   ctx.strokeStyle=cast; ctx.lineWidth=1;
@@ -234,68 +228,77 @@ function drawGrid(cells,p){
   ctx.moveTo(ox,oy-6);ctx.lineTo(ox,oy+6);ctx.stroke();
 }
 
+// Side view = vertical cross-section through the cone axis. World feet: apex at
+// (0,0), +x = forward along the azimuth, +y = down. The view auto-fits so a
+// cone aimed anywhere (forward, level, or straight down) stays framed.
 function drawSide(cells,p){
   const c=$('sideCanvas'), ctx=c.getContext('2d');
-  c.width=200; c.height=420;
-  const W=c.width,Hc=c.height; ctx.clearRect(0,0,W,Hc);
-  const bg='#1a1d2a', grid='rgba(255,255,255,0.07)', gnd='rgba(200,146,42,0.6)',
-        coneF='rgba(200,146,42,0.18)', coneB='rgba(200,146,42,0.8)',
-        axis='rgba(255,255,255,0.28)', cast='#e8e6e0', lbl='rgba(255,255,255,0.45)',
-        arc='rgba(91,155,213,0.9)';
+  const W=200, Hc=420; c.width=W; c.height=Hc;
+  const bg='#1a1d2a', grid='rgba(255,255,255,0.07)', gnd='rgba(200,146,42,0.55)',
+        coneF='rgba(200,146,42,0.16)', coneB='rgba(200,146,42,0.8)',
+        axis='rgba(255,255,255,0.25)', cast='#e8e6e0', lbl='rgba(255,255,255,0.4)';
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,Hc);
-  const {coneL,H,tilt}=p, tiltRad=tilt*Math.PI/180;
-  const range=Math.max(coneL+H+10,40), scale=Math.min((Hc*0.75)/range,3.8);
-  const gY=Hc*0.76, cX=48, cY=gY-H*scale, L=coneL*scale;
-  ctx.strokeStyle=grid; ctx.lineWidth=0.5;
-  for(let i=-8;i<32;i++){const y=gY-i*5*scale; if(y<-5||y>Hc+5)continue; ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  for(let i=0;i<32;i++){const x=cX+i*5*scale; if(x>W+5)break; ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,Hc);ctx.stroke();}
-  ctx.strokeStyle=gnd; ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(0,gY);ctx.lineTo(W,gY);ctx.stroke();
+  const {coneL,H,tilt,dirIdx}=p, tiltRad=tilt*Math.PI/180;
   const topA=tiltRad-HALF, botA=tiltRad+HALF;
-  ctx.fillStyle=coneF; ctx.beginPath(); ctx.moveTo(cX,cY);
-  ctx.lineTo(cX+Math.cos(topA)*L,cY+Math.sin(topA)*L);
-  ctx.arc(cX,cY,L,topA,botA); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle=coneB; ctx.lineWidth=1.2;
-  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(topA)*L,cY+Math.sin(topA)*L);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(botA)*L,cY+Math.sin(botA)*L);ctx.stroke();
-  const g=cells.filter(c=>c.hitsGround);
-  if(g.length){
-    const mn=Math.min(...g.map(c=>c.horzFt)), mx=Math.max(...g.map(c=>c.horzFt));
-    ctx.strokeStyle='#C8922A'; ctx.lineWidth=3;
-    ctx.beginPath();ctx.moveTo(cX+mn*scale,gY);ctx.lineTo(cX+mx*scale,gY);ctx.stroke();
+
+  // Content bounds (apex, the cone arc, the ground depth H).
+  let minX=0,maxX=0,minY=0,maxY=H;
+  for(let i=0;i<=24;i++){
+    const a=topA+(botA-topA)*i/24, x=Math.cos(a)*coneL, y=Math.sin(a)*coneL;
+    minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y);
   }
+  // Ground footprint = signed extent of ground cells projected onto the azimuth.
+  const d=DIRS[dirIdx], dl=Math.hypot(d.vx,d.vy)||1, ux=d.vx/dl, uy=d.vy/dl;
+  const g=cells.filter(c=>c.hitsGround);
+  let fMin=0,fMax=0;
+  if(g.length){
+    const proj=g.map(c=>((c.cx+0.5)*ux+(c.cy+0.5)*uy)*5);
+    fMin=Math.min(...proj); fMax=Math.max(...proj);
+    minX=Math.min(minX,fMin); maxX=Math.max(maxX,fMax);
+  }
+
+  // Fit transform (apex pixel = oX,oY).
+  const m=22, bw=Math.max(maxX-minX,1), bh=Math.max(maxY-minY,1);
+  const scale=Math.min((W-2*m)/bw,(Hc-2*m)/bh,4);
+  const oX=(W-(maxX+minX)*scale)/2, oY=m-minY*scale;
+  const PX=(wx,wy)=>[oX+wx*scale, oY+wy*scale];
+  const [ax,ay]=PX(0,0), gY=oY+H*scale, L=coneL*scale;
+
+  // Grid (5 ft).
+  ctx.strokeStyle=grid; ctx.lineWidth=0.5;
+  for(let i=Math.floor(minX/5)-1;i<=Math.ceil(maxX/5)+1;i++){const x=PX(i*5,0)[0];ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,Hc);ctx.stroke();}
+  for(let i=Math.floor(minY/5)-1;i<=Math.ceil(maxY/5)+1;i++){const y=PX(0,i*5)[1];ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // Ground line.
+  ctx.strokeStyle=gnd; ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(0,gY);ctx.lineTo(W,gY);ctx.stroke();
+
+  // Cone wedge.
+  ctx.fillStyle=coneF; ctx.beginPath(); ctx.moveTo(ax,ay);
+  ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);
+  ctx.arc(ax,ay,L,topA,botA); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle=coneB; ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(botA)*L,ay+Math.sin(botA)*L);ctx.stroke();
+
+  // Two-sided ground footprint.
+  if(g.length){
+    ctx.strokeStyle='#C8922A'; ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(PX(fMin,H)[0],gY);ctx.lineTo(PX(fMax,H)[0],gY);ctx.stroke();
+  }
+
+  // Axis + height drop.
   ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([4,3]);
-  ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX+Math.cos(tiltRad)*L,cY+Math.sin(tiltRad)*L);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(tiltRad)*L,ay+Math.sin(tiltRad)*L);ctx.stroke();
   ctx.setLineDash([]);
   if(H>0){
     ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([2,2]);
-    ctx.beginPath();ctx.moveTo(cX,cY);ctx.lineTo(cX,gY);ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax,gY);ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle=lbl; ctx.font='10px var(--font-mono)'; ctx.textAlign='right';
-    ctx.fillText(H+'ft',cX-5,(cY+gY)/2+4);
+    ctx.fillText(H+'ft',ax-5,(ay+gY)/2+4);
   }
-  const aR=Math.min(L*0.28,30);
-  ctx.strokeStyle=arc; ctx.lineWidth=1;
-  ctx.beginPath();ctx.arc(cX,cY,aR,topA,tiltRad);ctx.stroke();
-  ctx.beginPath();ctx.arc(cX,cY,aR,tiltRad,botA);ctx.stroke();
-  ctx.fillStyle=arc; ctx.font='500 10px var(--font-mono)'; ctx.textAlign='center';
-  const tm=topA+HALF/2, bm=tiltRad+HALF/2;
-  ctx.fillText('45°',cX+(aR+8)*Math.cos(tm),cY+(aR+8)*Math.sin(tm));
-  ctx.fillText('45°',cX+(aR+8)*Math.cos(bm),cY+(aR+8)*Math.sin(bm));
-  if(tilt!==0){
-    ctx.strokeStyle=axis; ctx.lineWidth=0.8; const tR=aR*1.9;
-    ctx.beginPath();
-    if(tilt>0)ctx.arc(cX,cY,tR,0,tiltRad); else ctx.arc(cX,cY,tR,tiltRad,0);
-    ctx.stroke();
-    ctx.fillStyle=lbl; ctx.font='10px var(--font-mono)'; ctx.textAlign='left';
-    const tmid=tiltRad/2;
-    ctx.fillText(Math.abs(tilt)+'°',cX+(tR+5)*Math.cos(tmid),cY+(tR+5)*Math.sin(tmid)+4);
-  }
-  ctx.fillStyle=cast; ctx.beginPath();ctx.arc(cX,cY,4,0,7);ctx.fill();
-  ctx.fillStyle=lbl; ctx.font='9px var(--font-mono)'; ctx.textAlign='right';
-  const step=[5,10,20,30].find(s=>s*scale>16)||30;
-  for(let i=-3;i<=Math.ceil((H+coneL)/step)+2;i++){
-    const fy=gY-i*step*scale; if(fy<2||fy>Hc-2)continue;
-    ctx.fillText(i*step+'ft',cX-7,fy+3);
-  }
+
+  // Caster.
+  ctx.fillStyle=cast; ctx.beginPath();ctx.arc(ax,ay,4,0,7);ctx.fill();
 }
 
 function updateStats(cells,p){
