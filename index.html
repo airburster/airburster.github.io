@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PF2e Cone Calculator</title>
+<title>Airburster</title>
 <style>
   :root{
     --bg:#14141a;
@@ -49,6 +49,13 @@
   .grid-scroll{overflow:auto;border-radius:var(--border-radius-md);background:var(--panel2);max-height:560px}
   .swatch{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
   .warn{font-size:10px;color:var(--accent);padding:2px 0;display:none}
+  .share-btn{
+    background:var(--accent);color:#14141a;border:none;border-radius:var(--border-radius-md);
+    padding:9px;font-family:var(--font-mono);font-size:11px;font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:filter .15s,background .15s;
+  }
+  .share-btn:hover{filter:brightness(1.08)}
+  .share-btn.copied{background:var(--air);color:#14141a}
   @media(max-width:760px){
     .wrap{grid-template-columns:1fr}
     .grid-scroll{max-height:400px}
@@ -97,6 +104,7 @@
         <div class="stat-item"><div class="stat-n" id="sFwdR">0ft</div><div class="stat-l">axis reach</div></div>
       </div>
       <div class="warn" id="clearNote">⚠ Cone clears the ground entirely</div>
+      <button class="share-btn" id="shareBtn">Copy share link</button>
     </div>
 
     <div style="min-width:0">
@@ -317,7 +325,37 @@ function redraw(){
   const cells=computeCells(p.coneL,p.H,p.tilt,p.dirIdx);
   drawGrid(cells,p); drawSide(cells,p); updateStats(cells,p);
 }
-[sCone,sHeight,sTilt,sDir,sZoom].forEach(s=>s.addEventListener('input',redraw));
+
+// --- shareable URL state: each control maps to a short hash key ---
+const CTRLS={c:sCone, h:sHeight, t:sTilt, d:sDir, z:sZoom};
+function writeHash(){
+  const q=Object.entries(CTRLS).map(([k,el])=>k+'='+el.value).join('&');
+  history.replaceState(null,'','#'+q); // live-update address bar (no history spam)
+}
+function readHash(){
+  const q=new URLSearchParams(location.hash.slice(1));
+  for(const [k,el] of Object.entries(CTRLS)){
+    if(!q.has(k)) continue;
+    const v=+q.get(k);
+    if(Number.isFinite(v)) el.value=v; // range inputs clamp to their min/max/step
+  }
+}
+
+const shareBtn=$('shareBtn');
+shareBtn.addEventListener('click',async()=>{
+  writeHash();
+  try{ await navigator.clipboard.writeText(location.href); }catch{}
+  shareBtn.textContent='Link copied ✓'; shareBtn.classList.add('copied');
+  clearTimeout(shareBtn._t);
+  shareBtn._t=setTimeout(()=>{shareBtn.textContent='Copy share link';shareBtn.classList.remove('copied');},1400);
+});
+
+[sCone,sHeight,sTilt,sDir,sZoom].forEach(s=>
+  s.addEventListener('input',()=>{ redraw(); writeHash(); }));
+// React to back/forward or a freshly pasted link.
+window.addEventListener('hashchange',()=>{ readHash(); redraw(); });
+
+readHash();
 redraw();
 </script>
 </body>
