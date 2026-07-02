@@ -46,7 +46,7 @@
   .stat-l{font-size:10px;color:var(--text2);margin-top:1px}
   .view-label{font-size:11px;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;text-align:center;margin-bottom:4px}
   .view-foot{font-size:10px;color:var(--text2);text-align:center;margin-top:4px}
-  .grid-scroll{overflow:auto;border-radius:var(--border-radius-md);background:var(--panel2);max-height:560px}
+  .grid-scroll{overflow:hidden;border-radius:var(--border-radius-md);background:var(--panel2)}
   .swatch{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
   .warn{font-size:10px;color:var(--accent);padding:2px 0;display:none}
   .share-btn{
@@ -66,14 +66,13 @@
   .tab.active{background:var(--accent);color:#14141a}
   @media(max-width:760px){
     .wrap{grid-template-columns:1fr}
-    .grid-scroll{max-height:400px}
   }
 </style>
 </head>
 <body>
 <div class="app">
   <h1>Airburster</h1>
-  <div class="subtitle">Geometrically accurate Dragon Breath!</div>
+  <div class="subtitle">Geometrically accurate dragon breath!</div>
 
   <div class="tabs">
     <button class="tab" data-shape="cone">Cone</button>
@@ -106,11 +105,6 @@
         <input type="range" id="sDir" min="0" max="7" step="1" value="2">
         <div class="ticks"><span>N</span><span>NE</span><span>E</span><span>SE</span><span>S</span><span>SW</span><span>W</span><span>NW</span></div>
       </div>
-      <div class="stat-box">
-        <div class="ctrl-label">Zoom</div>
-        <input type="range" id="sZoom" min="6" max="36" step="2" value="16">
-        <div style="font-size:10px;color:var(--text2)"><span id="vZoom">16</span> px / 5ft</div>
-      </div>
       <div class="stats">
         <div class="stat-item"><div class="stat-n" id="sGndSq">0</div><div class="stat-l">ground sq.</div></div>
         <div class="stat-item"><div class="stat-n" id="sAirSq">0</div><div class="stat-l">air sq.</div></div>
@@ -121,7 +115,7 @@
       <button class="share-btn" id="shareBtn">Copy share link</button>
     </div>
 
-    <div style="min-width:0">
+    <div style="min-width:0" id="topCol">
       <div class="view-label">Top-down view</div>
       <div class="grid-scroll"><canvas id="gridCanvas" width="420" height="420"></canvas></div>
       <div class="view-foot">
@@ -131,7 +125,7 @@
       </div>
     </div>
 
-    <div>
+    <div id="sideCol">
       <div class="view-label">Side elevation</div>
       <canvas id="sideCanvas" width="200" height="420"></canvas>
       <div class="view-foot">cross-section · 1 square = 5 ft · negative tilt = up</div>
@@ -163,13 +157,13 @@ const HALF=Math.PI/4;
 const $=id=>document.getElementById(id);
 
 const sCone=$('sCone'), sHeight=$('sHeight'), sTilt=$('sTilt'),
-      sDir=$('sDir'), sZoom=$('sZoom');
+      sDir=$('sDir');
 
 function getParams(){
   const sizes=SHAPES[shape].sizes;
   const idx=Math.min(Math.max(+sCone.value,1),sizes.length)-1;
   return { shape, size:sizes[idx], H:+sHeight.value, tilt:+sTilt.value,
-           dirIdx:+sDir.value, zoom:+sZoom.value };
+           dirIdx:+sDir.value };
 }
 function updateLabels(){
   const p=getParams();
@@ -179,7 +173,6 @@ function updateLabels(){
   $('tiltDir').textContent=p.tilt<0?'(up)':p.tilt>0?'(down)':'(level)';
   $('vDir').textContent=DIRS[p.dirIdx].name;
   $('dirType').textContent=DIRS[p.dirIdx].diag?'diagonal':'orthogonal';
-  $('vZoom').textContent=p.zoom;
 }
 
 const COS_HALF=Math.cos(HALF); // a point is in-cone when its axis angle ≤ 45°
@@ -268,10 +261,26 @@ function lineCells(p){
   return cells;
 }
 
-const GRID_PX=420; // fixed top-down viewport — window stays put across shape/size/zoom
+// The top-down window is a fixed square whose size matches the taller flanking
+// column (controls / side view). Re-measured only on resize, so it stays put
+// during slider interaction; the zoom auto-fits the shape into it every redraw.
+let GRID_PX=460;
+function measureGrid(){
+  const controls=document.querySelector('.controls'), side=$('sideCol'), col=$('topCol');
+  const flank=Math.max(controls?controls.offsetHeight:0, side?side.offsetHeight:0);
+  const colW=col?col.clientWidth:flank;
+  GRID_PX=Math.max(240, Math.round(Math.min(flank||460, colW||460)));
+}
+// Pixels per 5 ft so the shape's whole extent frames within the window (+ margin).
+function autoZoom(cells){
+  let half=1;
+  for(const cc of cells)
+    half=Math.max(half, Math.abs(cc.cx), Math.abs(cc.cx+1), Math.abs(cc.cy), Math.abs(cc.cy+1));
+  return Math.max(6, Math.min((GRID_PX/2-14)/(half+0.5), 46));
+}
 function drawGrid(cells,p){
   const c=$('gridCanvas'), ctx=c.getContext('2d');
-  const CELL=p.zoom;
+  const CELL=autoZoom(cells);
   c.width=GRID_PX; c.height=GRID_PX;
   const W=c.width,H=c.height;
   const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0';
@@ -418,7 +427,7 @@ function setShape(s){
 }
 
 // --- shareable URL state: shape + each control's value as a short hash key ---
-const CTRLS={c:sCone, h:sHeight, t:sTilt, d:sDir, z:sZoom};
+const CTRLS={c:sCone, h:sHeight, t:sTilt, d:sDir};
 function writeHash(){
   const q=['s='+shape, ...Object.entries(CTRLS).map(([k,el])=>k+'='+el.value)].join('&');
   history.replaceState(null,'','#'+q); // live-update address bar (no history spam)
@@ -442,15 +451,19 @@ shareBtn.addEventListener('click',async()=>{
   shareBtn._t=setTimeout(()=>{shareBtn.textContent='Copy share link';shareBtn.classList.remove('copied');},1400);
 });
 
-[sCone,sHeight,sTilt,sDir,sZoom].forEach(s=>
+[sCone,sHeight,sTilt,sDir].forEach(s=>
   s.addEventListener('input',()=>{ redraw(); writeHash(); }));
 document.querySelectorAll('.tab').forEach(t=>
   t.addEventListener('click',()=>{ setShape(t.dataset.shape); redraw(); writeHash(); }));
 // React to back/forward or a freshly pasted link.
 window.addEventListener('hashchange',()=>{ readHash(); redraw(); });
+// Keep the window matched to the columns as the viewport / layout changes.
+window.addEventListener('resize',()=>{ measureGrid(); redraw(); });
+window.addEventListener('load',()=>{ measureGrid(); redraw(); });
 
 setShape(shape);
 readHash();
+measureGrid();
 redraw();
 </script>
 </body>
