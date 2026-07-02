@@ -56,6 +56,14 @@
   }
   .share-btn:hover{filter:brightness(1.08)}
   .share-btn.copied{background:var(--air);color:#14141a}
+  .tabs{display:flex;gap:6px;margin-bottom:16px}
+  .tab{
+    background:var(--panel);color:var(--text2);border:none;border-radius:var(--border-radius-md);
+    padding:9px 18px;font-family:var(--font-mono);font-size:12px;font-weight:600;
+    letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:color .15s,background .15s;
+  }
+  .tab:hover{color:var(--text)}
+  .tab.active{background:var(--accent);color:#14141a}
   @media(max-width:760px){
     .wrap{grid-template-columns:1fr}
     .grid-scroll{max-height:400px}
@@ -64,29 +72,35 @@
 </head>
 <body>
 <div class="app">
-  <h1>PF2e Cone Calculator</h1>
-  <div class="subtitle">Official grid-intersection templates · with elevation &amp; tilt · origin = bottom-right grid corner</div>
+  <h1>Airburster</h1>
+  <div class="subtitle">PF2e area-of-effect placement · grid-intersection templates with elevation &amp; tilt · origin = grid corner</div>
+
+  <div class="tabs">
+    <button class="tab" data-shape="cone">Cone</button>
+    <button class="tab" data-shape="burst">Burst</button>
+    <button class="tab" data-shape="line">Line</button>
+  </div>
 
   <div class="wrap">
     <div class="controls">
       <div class="stat-box">
-        <div class="ctrl-label">Cone size</div>
+        <div class="ctrl-label" id="sizeLabel">Cone size</div>
         <div><span class="ctrl-val" id="vCone">30</span><span class="ctrl-unit">ft</span></div>
         <input type="range" id="sCone" min="1" max="5" step="1" value="2">
-        <div class="ticks"><span>15</span><span>30</span><span>60</span><span>90</span><span>120</span></div>
+        <div class="ticks" id="sizeTicks"><span>15</span><span>30</span><span>60</span><span>90</span><span>120</span></div>
       </div>
       <div class="stat-box">
         <div class="ctrl-label">Caster height</div>
         <div><span class="ctrl-val" id="vHeight">0</span><span class="ctrl-unit">ft</span></div>
         <input type="range" id="sHeight" min="0" max="120" step="5" value="0">
       </div>
-      <div class="stat-box">
+      <div class="stat-box" id="boxTilt">
         <div class="ctrl-label">Tilt <span id="tiltDir" style="font-size:10px;color:var(--text2)">(level)</span></div>
         <div><span class="ctrl-val" id="vTilt">0</span><span class="ctrl-unit">°</span></div>
         <input type="range" id="sTilt" min="-90" max="90" step="5" value="0">
         <div class="ticks"><span>↑90°</span><span>level</span><span>↓90°</span></div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" id="boxDir">
         <div class="ctrl-label">Direction</div>
         <div><span class="ctrl-val" id="vDir">E</span> <span id="dirType" style="font-size:10px;color:var(--text2)">orthogonal</span></div>
         <input type="range" id="sDir" min="0" max="7" step="1" value="2">
@@ -103,7 +117,7 @@
         <div class="stat-item"><div class="stat-n" id="sGndR">0ft</div><div class="stat-l">gnd. reach</div></div>
         <div class="stat-item"><div class="stat-n" id="sFwdR">0ft</div><div class="stat-l">axis reach</div></div>
       </div>
-      <div class="warn" id="clearNote">⚠ Cone clears the ground entirely</div>
+      <div class="warn" id="clearNote">⚠ Area doesn't reach the ground</div>
       <button class="share-btn" id="shareBtn">Copy share link</button>
     </div>
 
@@ -126,7 +140,14 @@
 </div>
 
 <script>
-const CONE_SIZES=[15,30,60,90,120];
+// Each shape sets its own size scale, the "size" control's label, and which of
+// tilt/direction apply (a sphere ignores both; a burst is symmetric).
+const SHAPES={
+  cone:  {label:'Cone size',   sizes:[15,30,60,90,120], tilt:true,  dir:true },
+  burst: {label:'Burst radius',sizes:[5,10,15,20,30,60],tilt:false, dir:false},
+  line:  {label:'Line length', sizes:[15,30,60,90,120], tilt:true,  dir:true },
+};
+let shape='cone';
 const DIRS=[
   {name:'N', vx:0, vy:1,  diag:false},
   {name:'NE',vx:1, vy:1,  diag:true},
@@ -145,12 +166,14 @@ const sCone=$('sCone'), sHeight=$('sHeight'), sTilt=$('sTilt'),
       sDir=$('sDir'), sZoom=$('sZoom');
 
 function getParams(){
-  return { coneL:CONE_SIZES[+sCone.value-1], H:+sHeight.value, tilt:+sTilt.value,
+  const sizes=SHAPES[shape].sizes;
+  const idx=Math.min(Math.max(+sCone.value,1),sizes.length)-1;
+  return { shape, size:sizes[idx], H:+sHeight.value, tilt:+sTilt.value,
            dirIdx:+sDir.value, zoom:+sZoom.value };
 }
 function updateLabels(){
   const p=getParams();
-  $('vCone').textContent=p.coneL;
+  $('vCone').textContent=p.size;
   $('vHeight').textContent=p.H;
   $('vTilt').textContent=Math.abs(p.tilt);
   $('tiltDir').textContent=p.tilt<0?'(up)':p.tilt>0?'(down)':'(level)';
@@ -176,11 +199,16 @@ function coneHit(X, Y, vz, axis, coneL){
   return cosAng >= COS_HALF-1e-9 ? dist3d : null;
 }
 
-function computeCells(coneL,H,tilt,dirIdx){
-  const tiltRad=tilt*Math.PI/180;
-  const axis=coneAxis(tiltRad,dirIdx);
-  const R=coneL/5, lim=Math.ceil(R);
-  const cells=[];
+function computeCells(p){
+  if(p.shape==='burst') return burstCells(p);
+  if(p.shape==='line')  return lineCells(p);
+  return coneCells(p);
+}
+
+function coneCells(p){
+  const {size,H,tilt,dirIdx}=p;
+  const tiltRad=tilt*Math.PI/180, axis=coneAxis(tiltRad,dirIdx);
+  const R=size/5, lim=Math.ceil(R), cells=[];
   // Scan every square within horizontal reach (slant ≥ horizontal distance, so
   // anything in-cone lies within R). One true 3D cone test, all directions.
   for(let cx=-lim-1; cx<=lim; cx++){
@@ -188,13 +216,11 @@ function computeCells(coneL,H,tilt,dirIdx){
       const mx=cx+0.5, my=cy+0.5;
       if(Math.hypot(mx,my) > R+1e-9) continue;
       const X=mx*5, Y=my*5, horzFt=Math.hypot(X,Y);
-      // Ground level (z=0): the cone reaches the floor here.
-      const slant=coneHit(X,Y,-H,axis,coneL);
+      const slant=coneHit(X,Y,-H,axis,size);
       if(slant!==null){ cells.push({cx,cy,hitsGround:true,horzFt,slant}); continue; }
-      // Otherwise, is the square covered anywhere above the ground?
       if(H>0||tilt!==0){
-        for(let z=5; z<=H+coneL+5; z+=5){
-          if(coneHit(X,Y,z-H,axis,coneL)!==null){
+        for(let z=5; z<=H+size+5; z+=5){
+          if(coneHit(X,Y,z-H,axis,size)!==null){
             cells.push({cx,cy,hitsGround:false,horzFt,slant:0}); break;
           }
         }
@@ -204,10 +230,48 @@ function computeCells(coneL,H,tilt,dirIdx){
   return cells;
 }
 
+// Burst = a sphere of radius R centered on the caster's corner at height H.
+// Ground squares lie where the sphere reaches the floor; an airburst high up
+// (H near/over R) leaves only air squares beneath it.
+function burstCells(p){
+  const {size:R,H}=p, lim=Math.ceil(R/5), cells=[];
+  for(let cx=-lim-1; cx<=lim; cx++){
+    for(let cy=-lim-1; cy<=lim; cy++){
+      const X=(cx+0.5)*5, Y=(cy+0.5)*5, rho=Math.hypot(X,Y);
+      if(rho > R+1e-6) continue;                   // column never enters the sphere
+      const groundDist=Math.hypot(rho,H);
+      if(groundDist <= R+1e-6) cells.push({cx,cy,hitsGround:true,horzFt:rho,slant:groundDist});
+      else cells.push({cx,cy,hitsGround:false,horzFt:rho,slant:0}); // sphere passes overhead only
+    }
+  }
+  return cells;
+}
+
+// Line = a 5 ft-wide beam from the corner along the direction, length = size.
+// A single file of squares (PF2e-style, no diagonal overlap); with height/tilt
+// the beam climbs or dives, so squares are "ground" only where it nears z=0.
+function lineCells(p){
+  const {size:L,H,tilt,dirIdx}=p, d=DIRS[dirIdx];
+  const tiltRad=tilt*Math.PI/180, ct=Math.cos(tiltRad), tt=Math.tan(tiltRad);
+  const sx=Math.sign(d.vx), sy=Math.sign(d.vy);
+  const stepFt=Math.hypot(sx,sy)*5;          // 5 orthogonal, 5√2 diagonal
+  const idx=(s,i)=> s>0 ? i : s<0 ? -1-i : 0; // corner-anchored single file
+  const cells=[];
+  if(ct<1e-6) return cells;                   // a perfectly vertical line has no footprint
+  for(let i=0;i<400;i++){
+    const horzFt=(i+0.5)*stepFt, slant=horzFt/ct;
+    if(slant > L+1e-6) break;
+    const z=H - horzFt*tt;                     // beam height over this square (tilt>0 dives)
+    if(z < -2.5-1e-6) break;                    // beam has dropped below the floor
+    cells.push({cx:idx(sx,i), cy:idx(sy,i), hitsGround:z<=2.5+1e-6, horzFt, slant});
+  }
+  return cells;
+}
+
 function drawGrid(cells,p){
   const c=$('gridCanvas'), ctx=c.getContext('2d');
   const CELL=p.zoom;
-  const R=p.coneL/5;
+  const R=p.size/5;
   const span=(R+3)*2;
   const px=Math.round(span*CELL);
   c.width=px; c.height=px;
@@ -236,24 +300,28 @@ function drawGrid(cells,p){
   ctx.moveTo(ox,oy-6);ctx.lineTo(ox,oy+6);ctx.stroke();
 }
 
-// Side view = vertical cross-section through the cone axis. World feet: apex at
-// (0,0), +x = forward along the azimuth, +y = down. The view auto-fits so a
-// cone aimed anywhere (forward, level, or straight down) stays framed.
+// Side view = vertical cross-section through the aim axis. World feet: origin at
+// (0,0) = caster/centre at height H, +x = forward along the azimuth, +y = down.
+// The view auto-fits so any shape/aim stays framed.
 function drawSide(cells,p){
   const c=$('sideCanvas'), ctx=c.getContext('2d');
   const W=200, Hc=420; c.width=W; c.height=Hc;
   const bg='#1a1d2a', grid='rgba(255,255,255,0.07)', gnd='rgba(200,146,42,0.55)',
-        coneF='rgba(200,146,42,0.16)', coneB='rgba(200,146,42,0.8)',
+        shapeF='rgba(200,146,42,0.16)', shapeB='rgba(200,146,42,0.8)',
         axis='rgba(255,255,255,0.25)', cast='#e8e6e0', lbl='rgba(255,255,255,0.4)';
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,Hc);
-  const {coneL,H,tilt,dirIdx}=p, tiltRad=tilt*Math.PI/180;
+  const {shape,size,H,tilt,dirIdx}=p, tiltRad=tilt*Math.PI/180;
   const topA=tiltRad-HALF, botA=tiltRad+HALF;
 
-  // Content bounds (apex, the cone arc, the ground depth H).
+  // Content bounds: origin, ground depth H, and the shape's silhouette.
   let minX=0,maxX=0,minY=0,maxY=H;
-  for(let i=0;i<=24;i++){
-    const a=topA+(botA-topA)*i/24, x=Math.cos(a)*coneL, y=Math.sin(a)*coneL;
-    minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+  const ext=(x,y)=>{minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);};
+  if(shape==='cone'){
+    for(let i=0;i<=24;i++){const a=topA+(botA-topA)*i/24; ext(Math.cos(a)*size,Math.sin(a)*size);}
+  }else if(shape==='burst'){
+    ext(-size,0); ext(size,0); ext(0,-size); ext(0,size);
+  }else{ // line
+    ext(Math.cos(tiltRad)*size, Math.sin(tiltRad)*size);
   }
   // Ground footprint = signed extent of ground cells projected onto the azimuth.
   const d=DIRS[dirIdx], dl=Math.hypot(d.vx,d.vy)||1, ux=d.vx/dl, uy=d.vy/dl;
@@ -262,15 +330,15 @@ function drawSide(cells,p){
   if(g.length){
     const proj=g.map(c=>((c.cx+0.5)*ux+(c.cy+0.5)*uy)*5);
     fMin=Math.min(...proj); fMax=Math.max(...proj);
-    minX=Math.min(minX,fMin); maxX=Math.max(maxX,fMax);
+    ext(fMin,H); ext(fMax,H);
   }
 
-  // Fit transform (apex pixel = oX,oY).
+  // Fit transform (origin pixel = oX,oY).
   const m=22, bw=Math.max(maxX-minX,1), bh=Math.max(maxY-minY,1);
   const scale=Math.min((W-2*m)/bw,(Hc-2*m)/bh,4);
   const oX=(W-(maxX+minX)*scale)/2, oY=m-minY*scale;
   const PX=(wx,wy)=>[oX+wx*scale, oY+wy*scale];
-  const [ax,ay]=PX(0,0), gY=oY+H*scale, L=coneL*scale;
+  const [ax,ay]=PX(0,0), gY=oY+H*scale, L=size*scale;
 
   // Grid (5 ft).
   ctx.strokeStyle=grid; ctx.lineWidth=0.5;
@@ -280,13 +348,21 @@ function drawSide(cells,p){
   // Ground line.
   ctx.strokeStyle=gnd; ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(0,gY);ctx.lineTo(W,gY);ctx.stroke();
 
-  // Cone wedge.
-  ctx.fillStyle=coneF; ctx.beginPath(); ctx.moveTo(ax,ay);
-  ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);
-  ctx.arc(ax,ay,L,topA,botA); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle=coneB; ctx.lineWidth=1.2;
-  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(botA)*L,ay+Math.sin(botA)*L);ctx.stroke();
+  // Shape silhouette.
+  ctx.fillStyle=shapeF; ctx.strokeStyle=shapeB; ctx.lineWidth=1.2;
+  if(shape==='cone'){
+    ctx.beginPath(); ctx.moveTo(ax,ay);
+    ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);
+    ctx.arc(ax,ay,L,topA,botA); ctx.closePath(); ctx.fill();
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(topA)*L,ay+Math.sin(topA)*L);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(botA)*L,ay+Math.sin(botA)*L);ctx.stroke();
+  }else if(shape==='burst'){
+    ctx.beginPath();ctx.arc(ax,ay,L,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(ax,ay,L,0,7);ctx.stroke();
+  }else{ // line — a beam from the origin at the tilt angle
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(tiltRad)*L,ay+Math.sin(tiltRad)*L);ctx.stroke();
+  }
 
   // Two-sided ground footprint.
   if(g.length){
@@ -294,10 +370,13 @@ function drawSide(cells,p){
     ctx.beginPath();ctx.moveTo(PX(fMin,H)[0],gY);ctx.lineTo(PX(fMax,H)[0],gY);ctx.stroke();
   }
 
-  // Axis + height drop.
-  ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([4,3]);
-  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(tiltRad)*L,ay+Math.sin(tiltRad)*L);ctx.stroke();
-  ctx.setLineDash([]);
+  // Aim axis (cone only — burst is symmetric, the line already is its axis).
+  if(shape==='cone'){
+    ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(tiltRad)*L,ay+Math.sin(tiltRad)*L);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // Height drop.
   if(H>0){
     ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([2,2]);
     ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax,gY);ctx.stroke(); ctx.setLineDash([]);
@@ -305,7 +384,7 @@ function drawSide(cells,p){
     ctx.fillText(H+'ft',ax-5,(ay+gY)/2+4);
   }
 
-  // Caster.
+  // Caster / centre.
   ctx.fillStyle=cast; ctx.beginPath();ctx.arc(ax,ay,4,0,7);ctx.fill();
 }
 
@@ -322,18 +401,33 @@ function updateStats(cells,p){
 function redraw(){
   updateLabels();
   const p=getParams();
-  const cells=computeCells(p.coneL,p.H,p.tilt,p.dirIdx);
+  const cells=computeCells(p);
   drawGrid(cells,p); drawSide(cells,p); updateStats(cells,p);
 }
 
-// --- shareable URL state: each control maps to a short hash key ---
+// Switch active shape: retitle/rescale the size control and hide the controls
+// that don't apply (tilt/direction for a burst).
+function setShape(s){
+  shape=s;
+  const cfg=SHAPES[s];
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.shape===s));
+  $('sizeLabel').textContent=cfg.label;
+  sCone.max=cfg.sizes.length;
+  if(+sCone.value>cfg.sizes.length) sCone.value=cfg.sizes.length;
+  $('sizeTicks').innerHTML=cfg.sizes.map(v=>'<span>'+v+'</span>').join('');
+  $('boxTilt').style.display=cfg.tilt?'':'none';
+  $('boxDir').style.display=cfg.dir?'':'none';
+}
+
+// --- shareable URL state: shape + each control's value as a short hash key ---
 const CTRLS={c:sCone, h:sHeight, t:sTilt, d:sDir, z:sZoom};
 function writeHash(){
-  const q=Object.entries(CTRLS).map(([k,el])=>k+'='+el.value).join('&');
+  const q=['s='+shape, ...Object.entries(CTRLS).map(([k,el])=>k+'='+el.value)].join('&');
   history.replaceState(null,'','#'+q); // live-update address bar (no history spam)
 }
 function readHash(){
   const q=new URLSearchParams(location.hash.slice(1));
+  if(q.has('s') && SHAPES[q.get('s')]) setShape(q.get('s')); // before reading size value
   for(const [k,el] of Object.entries(CTRLS)){
     if(!q.has(k)) continue;
     const v=+q.get(k);
@@ -352,9 +446,12 @@ shareBtn.addEventListener('click',async()=>{
 
 [sCone,sHeight,sTilt,sDir,sZoom].forEach(s=>
   s.addEventListener('input',()=>{ redraw(); writeHash(); }));
+document.querySelectorAll('.tab').forEach(t=>
+  t.addEventListener('click',()=>{ setShape(t.dataset.shape); redraw(); writeHash(); }));
 // React to back/forward or a freshly pasted link.
 window.addEventListener('hashchange',()=>{ readHash(); redraw(); });
 
+setShape(shape);
 readHash();
 redraw();
 </script>
