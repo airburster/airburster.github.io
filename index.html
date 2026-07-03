@@ -6,21 +6,24 @@
 <title>Airburster</title>
 <style>
   :root{
-    --bg:#14141a;
-    --panel:#1f2230;
-    --panel2:#262a3a;
-    --text:#e8e6e0;
-    --text2:#9aa0b0;
-    --accent:#C8922A;
-    --air:#5B9BD5;
-    --border-radius-md:8px;
-    --font-mono:'SFMono-Regular',ui-monospace,'Menlo','Consolas',monospace;
+    --bg:#0d0f16;
+    --panel:#161a24;
+    --panel2:#1e2230;
+    --text:#e9ebf2;
+    --text2:#868da2;
+    --accent:#8b7bf0;
+    --accent-ink:#0d0f16;
+    --ground:#ec6a4f;
+    --air:#43b7c9;
+    --warn:#e0a13a;
+    --border-radius-md:10px;
+    --font:'Inter','Helvetica Neue',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     background:var(--bg);
     color:var(--text);
-    font-family:var(--font-mono);
+    font-family:var(--font);
     padding:20px;
     min-height:100vh;
   }
@@ -48,22 +51,22 @@
   .view-foot{font-size:10px;color:var(--text2);text-align:center;margin-top:4px}
   .grid-scroll{overflow:hidden;border-radius:var(--border-radius-md);background:var(--panel2)}
   .swatch{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
-  .warn{font-size:10px;color:var(--accent);padding:2px 0;display:none}
+  .warn{font-size:10px;color:var(--warn);padding:2px 0;display:none}
   .share-btn{
-    background:var(--accent);color:#14141a;border:none;border-radius:var(--border-radius-md);
-    padding:9px;font-family:var(--font-mono);font-size:11px;font-weight:600;
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--border-radius-md);
+    padding:9px;font-family:var(--font);font-size:11px;font-weight:600;
     letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:filter .15s,background .15s;
   }
   .share-btn:hover{filter:brightness(1.08)}
-  .share-btn.copied{background:var(--air);color:#14141a}
+  .share-btn.copied{background:var(--air);color:var(--accent-ink)}
   .tabs{display:flex;gap:6px;margin-bottom:16px}
   .tab{
     background:var(--panel);color:var(--text2);border:none;border-radius:var(--border-radius-md);
-    padding:9px 18px;font-family:var(--font-mono);font-size:12px;font-weight:600;
+    padding:9px 18px;font-family:var(--font);font-size:12px;font-weight:600;
     letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:color .15s,background .15s;
   }
   .tab:hover{color:var(--text)}
-  .tab.active{background:var(--accent);color:#14141a}
+  .tab.active{background:var(--accent);color:var(--accent-ink)}
   @media(max-width:760px){
     .wrap{grid-template-columns:1fr}
   }
@@ -119,8 +122,8 @@
       <div class="view-label">Top-down view</div>
       <div class="grid-scroll"><canvas id="gridCanvas" width="420" height="420"></canvas></div>
       <div class="view-foot">
-        <span class="swatch" style="background:#C8922A;opacity:.75;margin-right:3px"></span>ground
-        <span class="swatch" style="background:#5B9BD5;opacity:.5;margin:0 3px 0 10px"></span>air
+        <span class="swatch" style="background:var(--ground);opacity:.85;margin-right:3px"></span>ground
+        <span class="swatch" style="background:var(--air);opacity:.6;margin:0 3px 0 10px"></span>air
         &nbsp;· 1 square = 5 ft
       </div>
     </div>
@@ -155,6 +158,9 @@ const DIRS=[
 const HALF=Math.PI/4;
 
 const $=id=>document.getElementById(id);
+
+// Data colours (must match the --ground / --air CSS vars; canvas can't read them).
+const C_GROUND='#ec6a4f', C_AIR='#43b7c9', C_GROUND_RGB='236,106,79';
 
 const sCone=$('sCone'), sHeight=$('sHeight'), sTilt=$('sTilt'),
       sDir=$('sDir');
@@ -297,7 +303,7 @@ function drawGrid(cells,p){
   const CELL=autoZoom(p);
   c.width=GRID_W; c.height=GRID_H;
   const W=c.width,H=c.height;
-  const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0';
+  const bg='#12151e', grid='rgba(255,255,255,0.08)', cast='#e9ebf2';
   const ox=W/2, oy=H/2;
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
   ctx.strokeStyle=grid; ctx.lineWidth=0.5;
@@ -308,7 +314,7 @@ function drawGrid(cells,p){
     const sx=ox+cc.cx*CELL;
     const sy=oy-(cc.cy+1)*CELL;
     ctx.globalAlpha=cc.hitsGround?0.75:0.45;
-    ctx.fillStyle=cc.hitsGround?'#C8922A':'#5B9BD5';
+    ctx.fillStyle=cc.hitsGround?C_GROUND:C_AIR;
     ctx.fillRect(sx+0.5,sy+0.5,CELL-1,CELL-1);
   }
   ctx.globalAlpha=1;
@@ -325,9 +331,9 @@ function drawGrid(cells,p){
 function drawSide(cells,p){
   const c=$('sideCanvas'), ctx=c.getContext('2d');
   const W=200, Hc=SIDE_H; c.width=W; c.height=Hc;
-  const bg='#1a1d2a', grid='rgba(255,255,255,0.07)', gnd='rgba(200,146,42,0.55)',
-        shapeF='rgba(200,146,42,0.16)', shapeB='rgba(200,146,42,0.8)',
-        axis='rgba(255,255,255,0.25)', cast='#e8e6e0', lbl='rgba(255,255,255,0.4)';
+  const bg='#12151e', grid='rgba(255,255,255,0.07)', gnd='rgba('+C_GROUND_RGB+',0.55)',
+        shapeF='rgba('+C_GROUND_RGB+',0.16)', shapeB='rgba('+C_GROUND_RGB+',0.85)',
+        axis='rgba(255,255,255,0.25)', cast='#e9ebf2', lbl='rgba(255,255,255,0.4)';
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,Hc);
   const {shape,size,H,tilt,dirIdx}=p, tiltRad=tilt*Math.PI/180;
   const topA=tiltRad-HALF, botA=tiltRad+HALF;
@@ -385,7 +391,7 @@ function drawSide(cells,p){
 
   // Two-sided ground footprint.
   if(g.length){
-    ctx.strokeStyle='#C8922A'; ctx.lineWidth=3;
+    ctx.strokeStyle=C_GROUND; ctx.lineWidth=3;
     ctx.beginPath();ctx.moveTo(PX(fMin,H)[0],gY);ctx.lineTo(PX(fMax,H)[0],gY);ctx.stroke();
   }
 
@@ -399,7 +405,7 @@ function drawSide(cells,p){
   if(H>0){
     ctx.strokeStyle=axis; ctx.lineWidth=0.8; ctx.setLineDash([2,2]);
     ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax,gY);ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle=lbl; ctx.font='10px var(--font-mono)'; ctx.textAlign='right';
+    ctx.fillStyle=lbl; ctx.font='10px system-ui,sans-serif'; ctx.textAlign='right';
     ctx.fillText(H+'ft',ax-5,(ay+gY)/2+4);
   }
 
