@@ -262,15 +262,19 @@ function lineCells(p){
 }
 
 // The top-down window fills its column: width = column width, height = the
-// taller flanking column (controls / side view). Re-measured only on resize, so
-// it stays put during slider interaction; the zoom auto-fits the shape each redraw.
+// taller flanking column minus this column's own label + caption (so the whole
+// top-down column ends up exactly as tall as its taller neighbour, tops and
+// bottoms aligned). Re-measured only on resize, so it stays put during slider
+// interaction; the zoom auto-fits the shape each redraw.
 let GRID_W=680, GRID_H=460;
 function measureGrid(){
   const controls=document.querySelector('.controls'), side=$('sideCol'), col=$('topCol');
   const flank=Math.max(controls?controls.offsetHeight:0, side?side.offsetHeight:0);
+  const lbl=col?col.querySelector('.view-label'):null, foot=col?col.querySelector('.view-foot'):null;
+  const chrome=(lbl?lbl.offsetHeight:0)+(foot?foot.offsetHeight:0)+8; // +8 = label/foot margins
   const colW=col?col.clientWidth:flank;
   GRID_W=Math.max(240, Math.round(colW||680));
-  GRID_H=Math.max(240, Math.round(flank||460));
+  GRID_H=Math.max(240, Math.round((flank||460)-chrome));
 }
 // Pixels per 5 ft so the shape's extent frames within the rectangle. Zoom is
 // computed from the shape aimed S (index 4), not the live aim: because the window
