@@ -89,7 +89,7 @@
         <div class="ticks" id="sizeTicks"><span>15</span><span>30</span><span>60</span><span>90</span><span>120</span></div>
       </div>
       <div class="stat-box">
-        <div class="ctrl-label">Caster height</div>
+        <div class="ctrl-label" id="heightLabel">Caster height</div>
         <div><span class="ctrl-val" id="vHeight">0</span><span class="ctrl-unit">ft</span></div>
         <input type="range" id="sHeight" min="0" max="120" step="5" value="0">
       </div>
@@ -272,10 +272,15 @@ function measureGrid(){
   GRID_W=Math.max(240, Math.round(colW||680));
   GRID_H=Math.max(240, Math.round(flank||460));
 }
-// Pixels per 5 ft so the shape's extent frames within the rectangle on both axes.
-function autoZoom(cells){
+// Pixels per 5 ft so the shape's extent frames within the rectangle. Zoom is
+// computed from the shape aimed S (index 4), not the live aim: because the window
+// is wider than tall, pointing S loads the shape onto the shorter (vertical) axis
+// — the tightest fit — so that scale also frames every rotation. Fixing the
+// reference stops the grid from jumping as you sweep the direction slider.
+function autoZoom(p){
+  const ref=SHAPES[p.shape].dir ? computeCells({...p,dirIdx:4}) : computeCells(p);
   let hx=1, hy=1;
-  for(const cc of cells){
+  for(const cc of ref){
     hx=Math.max(hx, Math.abs(cc.cx), Math.abs(cc.cx+1));
     hy=Math.max(hy, Math.abs(cc.cy), Math.abs(cc.cy+1));
   }
@@ -284,7 +289,7 @@ function autoZoom(cells){
 }
 function drawGrid(cells,p){
   const c=$('gridCanvas'), ctx=c.getContext('2d');
-  const CELL=autoZoom(cells);
+  const CELL=autoZoom(p);
   c.width=GRID_W; c.height=GRID_H;
   const W=c.width,H=c.height;
   const bg='#1a1d2a', grid='rgba(255,255,255,0.08)', cast='#e8e6e0';
@@ -421,6 +426,7 @@ function setShape(s){
   const cfg=SHAPES[s];
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.shape===s));
   $('sizeLabel').textContent=cfg.label;
+  $('heightLabel').textContent=s==='burst'?'Burst height':'Caster height';
   sCone.max=cfg.sizes.length;
   if(+sCone.value>cfg.sizes.length) sCone.value=cfg.sizes.length;
   $('sizeTicks').innerHTML=cfg.sizes.map(v=>'<span>'+v+'</span>').join('');
