@@ -37,7 +37,7 @@ input[type=range]{width:100%;margin:5px 0 2px;accent-color:var(--accent);cursor:
 canvas{display:block;max-width:100%}
 #gridCanvas{cursor:crosshair}
 .link-btn{background:none;border:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px}
-.toolbar{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.toolbar{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin-top:6px}
 .seg{display:inline-flex;border-radius:6px;overflow:hidden}
 .tool-btn{background:var(--panel);color:var(--text2);border:none;border-radius:6px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer;transition:color .15s,background .15s}
 .tool-btn:hover{color:var(--text)}
