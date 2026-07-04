@@ -1,0 +1,81 @@
+:root{
+  --bg:#0d0f16;
+  --panel:#161a24;
+  --panel2:#1e2230;
+  --text:#e9ebf2;
+  --text2:#868da2;
+  --accent:#8b7bf0;
+  --accent-ink:#0d0f16;
+  --ground:#ec6a4f;
+  --air:#43b7c9;
+  --warn:#e0a13a;
+  --border-radius-md:10px;
+  --font:'Inter','Helvetica Neue',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font);
+  padding:20px;
+  min-height:100vh;
+}
+.app{max-width:1080px;margin:0 auto}
+h1{
+  font-size:18px;font-weight:600;letter-spacing:.04em;margin-bottom:2px;
+}
+.subtitle{font-size:12px;color:var(--text2);margin-bottom:18px}
+.wrap{
+  display:grid;grid-template-columns:170px 1fr 200px;gap:14px;align-items:start;
+}
+.controls{display:flex;flex-direction:column;gap:10px}
+.ctrl-label{font-size:11px;color:var(--text2);letter-spacing:.04em;text-transform:uppercase}
+.ctrl-val{font-size:18px;font-weight:500;color:var(--text);line-height:1}
+.ctrl-unit{font-size:11px;color:var(--text2);margin-left:2px}
+.stat-box{background:var(--panel);border-radius:var(--border-radius-md);padding:8px 11px}
+input[type=range]{width:100%;margin:5px 0 2px;accent-color:var(--accent);cursor:pointer}
+canvas{display:block;max-width:100%}
+#gridCanvas{cursor:crosshair}
+.link-btn{background:none;border:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px}
+.toolbar{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.seg{display:inline-flex;border-radius:6px;overflow:hidden}
+.tool-btn{background:var(--panel);color:var(--text2);border:none;border-radius:6px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer;transition:color .15s,background .15s}
+.tool-btn:hover{color:var(--text)}
+.tool-btn.active{background:var(--accent);color:var(--accent-ink)}
+.seg .tool-btn{border-radius:0}
+.tool-stat{font-size:11px;color:var(--text2)}
+.tool-hint{font-size:10px;color:var(--text2);text-align:center;margin-top:6px;line-height:1.6}
+.tool-hint b{color:var(--text);font-weight:600}
+.tool-lbl{font-size:11px;color:var(--text2);letter-spacing:.03em}
+.elev-panel{display:inline-flex;align-items:center;gap:6px}
+.ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--text2)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px}
+.stat-item{background:var(--panel);border-radius:var(--border-radius-md);padding:7px 9px}
+.stat-n{font-size:16px;font-weight:500;color:var(--text)}
+.stat-l{font-size:10px;color:var(--text2);margin-top:1px}
+.view-label{font-size:11px;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;text-align:center;margin-bottom:4px}
+.view-foot{font-size:10px;color:var(--text2);text-align:center;margin-top:4px}
+.grid-scroll{overflow:hidden;border-radius:var(--border-radius-md);background:var(--panel2)}
+.swatch{display:inline-block;width:10px;height:10px;vertical-align:middle;border-radius:2px}
+.warn{font-size:10px;color:var(--warn);padding:2px 0;display:none}
+.share-btn{
+  background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--border-radius-md);
+  padding:9px;font-family:var(--font);font-size:11px;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:filter .15s,background .15s;
+}
+.share-btn:hover{filter:brightness(1.08)}
+.share-btn.copied{background:var(--air);color:var(--accent-ink)}
+.toprow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.toprow .tabs{margin-bottom:0}
+.unit-toggle{display:inline-flex;align-items:center;gap:6px}
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tab{
+  background:var(--panel);color:var(--text2);border:none;border-radius:var(--border-radius-md);
+  padding:9px 18px;font-family:var(--font);font-size:12px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:color .15s,background .15s;
+}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--accent);color:var(--accent-ink)}
+@media(max-width:760px){
+  .wrap{grid-template-columns:1fr}
+}
