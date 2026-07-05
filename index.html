@@ -18,11 +18,19 @@
       <button class="tab" data-shape="cylinder">Cylinder</button>
       <button class="tab" data-shape="emanation">Emanation</button>
     </div>
-    <div class="unit-toggle">
-      <span class="tool-lbl">Mode</span>
-      <span class="seg">
-        <button id="modeGeom" class="tool-btn active">Geometric</button><button id="modePf2e" class="tool-btn">PF2e RAW</button>
-      </span>
+    <div class="opts">
+      <div class="unit-toggle">
+        <span class="tool-lbl">Mode</span>
+        <span class="seg">
+          <button id="modeGeom" class="tool-btn active">Geometric</button><button id="modePf2e" class="tool-btn">PF2e RAW</button>
+        </span>
+      </div>
+      <div class="unit-toggle">
+        <span class="tool-lbl">Units</span>
+        <span class="seg">
+          <button id="unitFt" class="tool-btn active">ft</button><button id="unitM" class="tool-btn">m</button>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -30,18 +38,24 @@
     <div class="controls">
       <div class="stat-box">
         <div class="ctrl-label" id="sizeLabel">Cone size</div>
-        <div><span class="ctrl-val" id="vCone">30</span><span class="ctrl-unit">ft</span></div>
+        <div><span class="ctrl-val" id="vCone">30</span><span class="ctrl-unit js-unit">ft</span></div>
         <input type="range" id="sCone" min="5" max="120" step="5" value="30">
       </div>
       <div class="stat-box">
         <div class="ctrl-label" id="heightLabel">Caster height</div>
-        <div><span class="ctrl-val" id="vHeight">0</span><span class="ctrl-unit">ft</span></div>
+        <div><span class="ctrl-val" id="vHeight">0</span><span class="ctrl-unit js-unit">ft</span></div>
         <input type="range" id="sHeight" min="0" max="120" step="5" value="0">
       </div>
       <div class="stat-box" id="boxCylH" style="display:none">
         <div class="ctrl-label">Cylinder height</div>
-        <div><span class="ctrl-val" id="vCylH">40</span><span class="ctrl-unit">ft</span></div>
+        <div><span class="ctrl-val" id="vCylH">40</span><span class="ctrl-unit js-unit">ft</span></div>
         <input type="range" id="sCylH" min="5" max="120" step="5" value="40">
+      </div>
+      <div class="stat-box" id="boxEma" style="display:none">
+        <div class="ctrl-label">Caster size</div>
+        <div><span class="ctrl-val" id="vEma">Medium</span></div>
+        <input type="range" id="sEma" min="1" max="4" step="1" value="1">
+        <div class="ticks"><span>M</span><span>L</span><span>H</span><span>G</span></div>
       </div>
       <div class="stat-box" id="boxTilt">
         <div class="ctrl-label">Tilt <span id="tiltDir" style="font-size:10px;color:var(--text2)">(level)</span></div>
@@ -71,7 +85,7 @@
       <div class="view-foot">
         <span class="swatch" style="background:var(--ground);opacity:.85;margin-right:3px"></span>ground
         <span class="swatch" style="background:var(--air);opacity:.6;margin:0 3px 0 10px"></span>air
-        &nbsp;· 1 square = 5 ft
+        &nbsp;· 1 square = <span class="js-square">5 ft</span>
       </div>
       <div class="toolbar">
         <span class="tool-lbl">Tokens</span>
@@ -94,7 +108,7 @@
     <div id="sideCol">
       <div class="view-label">Side elevation</div>
       <canvas id="sideCanvas" width="200" height="420"></canvas>
-      <div class="view-foot">cross-section · 1 square = 5 ft</div>
+      <div class="view-foot">cross-section · 1 square = <span class="js-square">5 ft</span></div>
     </div>
   </div>
 </div>

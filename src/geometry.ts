@@ -57,13 +57,42 @@ export function computeCells(p: Params): Cell[] {
   return pf ? pf2eConeCells(p) : coneCells(p);
 }
 
-// Horizontal nearest-point distance from a cell to the 5 ft emanator square that is
-// centred on the origin corner (spans -2.5..2.5 ft on each axis). Distance between
-// two intervals [a,b] and [c,d] is max(0, a-d, c-b).
-function emanatorGap(cx: number, cy: number): number {
-  const gx = Math.max(0, cx * 5 - 2.5, -2.5 - (cx + 1) * 5);
-  const gy = Math.max(0, cy * 5 - 2.5, -2.5 - (cy + 1) * 5);
+// The emanator creature occupies an S x S block of whole cells (S = 1 Medium ..
+// 4 Gargantuan), placed as centred on the origin as the grid allows: even sizes
+// straddle the origin intersection; odd sizes lean one cell toward +x/+y, since a
+// single cell's centre can't sit on an intersection. x0/x1 are its feet extents.
+export interface EmaBox {
+  lo: number;
+  hi: number;
+  x0: number;
+  x1: number;
+}
+export function emanatorBox(n: number): EmaBox {
+  const S = Math.max(1, Math.min(4, Math.round(n)));
+  const lo = -Math.floor(S / 2);
+  const hi = lo + S - 1;
+  return { lo, hi, x0: lo * 5, x1: (hi + 1) * 5 };
+}
+
+// Horizontal distance from a cell's centre to the emanator's footprint rectangle
+// (0 inside it). Distance from a point to an interval [a,b] is max(0, a-p, p-b);
+// the box is square, so x and y share the same [x0,x1] extents.
+function emanatorGap(cx: number, cy: number, box: EmaBox): number {
+  const mx = (cx + 0.5) * 5;
+  const my = (cy + 0.5) * 5;
+  const gx = Math.max(0, box.x0 - mx, mx - box.x1);
+  const gy = Math.max(0, box.x0 - my, my - box.x1);
   return Math.hypot(gx, gy);
+}
+
+// PF2e counted distance from a cell to the emanator's footprint: 0 on the creature,
+// then the alternating-diagonal rule applied to the squares stepped OUT of the box.
+function pf2eEmanatorGap(cx: number, cy: number, box: EmaBox): number {
+  const dx = cx < box.lo ? box.lo - cx : cx > box.hi ? cx - box.hi : 0;
+  const dy = cy < box.lo ? box.lo - cy : cy > box.hi ? cy - box.hi : 0;
+  const a = Math.max(dx, dy);
+  const b = Math.min(dx, dy);
+  return 5 * (a + Math.floor(b / 2));
 }
 
 // Cylinder = a vertical column: a disc of radius R (measured from the corner, like a
@@ -84,16 +113,18 @@ function cylinderCells(p: Params): Cell[] {
   return cells;
 }
 
-// Emanation = a 3D area issuing from the emanator's whole 5 ft square (centred on the
-// origin), reaching R in every direction -- so its footprint is centred on a square,
-// not a corner. Sphere-swept vertically, so flyers within R are caught.
+// Emanation = a 3D area issuing from the emanator's whole footprint, reaching R in
+// every direction from its edges -- so a Medium creature fills one square and the
+// area grows from that square's centre, not from a grid corner. Sphere-swept
+// vertically, so flyers within R are caught.
 function emanationCells(p: Params): Cell[] {
   const { size: R, H } = p;
-  const lim = Math.ceil(R / 5) + 1;
+  const box = emanatorBox(p.emaN);
+  const pad = Math.ceil(R / 5) + 1;
   const cells: Cell[] = [];
-  for (let cx = -lim - 1; cx <= lim; cx++) {
-    for (let cy = -lim - 1; cy <= lim; cy++) {
-      const gap = emanatorGap(cx, cy);
+  for (let cx = box.lo - pad; cx <= box.hi + pad; cx++) {
+    for (let cy = box.lo - pad; cy <= box.hi + pad; cy++) {
+      const gap = emanatorGap(cx, cy, box);
       if (gap > R + 1e-6) continue;
       const s = Math.sqrt(Math.max(0, R * R - gap * gap));
       const groundDist = Math.hypot(gap, H);
@@ -331,16 +362,18 @@ function pf2eCylinderCells(p: Params): Cell[] {
   return cells;
 }
 
-// PF2e emanation: counted-distance octagon, sphere-swept vertically. (In RAW grid
-// mode this counts from the origin like a burst; the creature-centred footprint of a
-// true emanation is only distinct in Geometric mode.)
+// PF2e emanation: counted distance measured out from the creature's footprint
+// (octagonal), sphere-swept vertically so airborne emanators keep their air/ground
+// split. The footprint fills its squares (distance 0), matching RAW where an
+// emanation extends outward from every edge of the creature's space.
 function pf2eEmanationCells(p: Params): Cell[] {
   const { size: R, H } = p;
-  const lim = Math.ceil(R / 5);
+  const box = emanatorBox(p.emaN);
+  const pad = Math.ceil(R / 5) + 1;
   const cells: Cell[] = [];
-  for (let cx = -lim - 1; cx <= lim; cx++) {
-    for (let cy = -lim - 1; cy <= lim; cy++) {
-      const hf = pf2eFeetH(cx, cy);
+  for (let cx = box.lo - pad; cx <= box.hi + pad; cx++) {
+    for (let cy = box.lo - pad; cy <= box.hi + pad; cy++) {
+      const hf = pf2eEmanatorGap(cx, cy, box);
       if (hf > R + 1e-9) continue;
       const s = Math.sqrt(Math.max(0, R * R - hf * hf));
       const groundDist = Math.hypot(hf, H);

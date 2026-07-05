@@ -36,6 +36,7 @@ export interface Params {
   tilt: number;
   dir: number;
   cylH: number; // cylinder height (only used by the cylinder shape)
+  emaN: number; // emanator creature size in squares, 1-4 (only used by the emanation shape)
 }
 
 // One affected grid square. zmin/zmax bound the effect's vertical span in this

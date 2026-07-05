@@ -1,5 +1,7 @@
-import { autoZoom, targetHit } from '../geometry';
+import { autoZoom, targetHit, emanatorBox } from '../geometry';
 import { C_GROUND, C_AIR, SIZE_LETTER } from '../constants';
+import { fmtValue } from '../units';
+import type { Units } from '../units';
 import type { Cell, Params, ZMap, Target, GridView } from '../types';
 
 export interface DrawGridArgs {
@@ -11,11 +13,12 @@ export interface DrawGridArgs {
   selected: number;
   gridW: number;
   gridH: number;
+  units: Units;
 }
 
 // Top-down view. Returns the transform used, so the caller can hit-test clicks.
 export function drawGrid(args: DrawGridArgs): GridView {
-  const { canvas: c, cells, p, zmap, targets, selected, gridW, gridH } = args;
+  const { canvas: c, cells, p, zmap, targets, selected, gridW, gridH, units } = args;
   const ctx = c.getContext('2d')!;
   const CELL = autoZoom(p, gridW, gridH);
   c.width = gridW;
@@ -56,18 +59,35 @@ export function drawGrid(args: DrawGridArgs): GridView {
     ctx.fillRect(sx + 0.5, sy + 0.5, CELL - 1, CELL - 1);
   }
   ctx.globalAlpha = 1;
-  ctx.fillStyle = cast;
-  ctx.beginPath();
-  ctx.arc(ox, oy, 3.5, 0, 7);
-  ctx.fill();
-  ctx.strokeStyle = cast;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(ox - 6, oy);
-  ctx.lineTo(ox + 6, oy);
-  ctx.moveTo(ox, oy - 6);
-  ctx.lineTo(ox, oy + 6);
-  ctx.stroke();
+  if (p.shape === 'emanation') {
+    // The emanator creature: outline its S x S footprint, dot at the centre it
+    // radiates from (so it reads as "from the middle of its space", not a corner).
+    const box = emanatorBox(p.emaN);
+    const bx = ox + box.lo * CELL;
+    const byTop = oy - (box.hi + 1) * CELL;
+    const side = (box.hi - box.lo + 1) * CELL;
+    ctx.strokeStyle = cast;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx + 0.5, byTop + 0.5, side - 1, side - 1);
+    const mid = (box.lo + box.hi + 1) / 2; // footprint centre, in cells from origin
+    ctx.fillStyle = cast;
+    ctx.beginPath();
+    ctx.arc(ox + mid * CELL, oy - mid * CELL, 3.5, 0, 7);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = cast;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 3.5, 0, 7);
+    ctx.fill();
+    ctx.strokeStyle = cast;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ox - 6, oy);
+    ctx.lineTo(ox + 6, oy);
+    ctx.moveTo(ox, oy - 6);
+    ctx.lineTo(ox, oy + 6);
+    ctx.stroke();
+  }
 
   // Placed target cubes: coral when the effect catches their body, grey when clear.
   // Labelled with an automatic number (identity); size letter tucked in the corner.
@@ -107,7 +127,7 @@ export function drawGrid(args: DrawGridArgs): GridView {
       ctx.textBaseline = 'bottom';
       ctx.font = 'bold ' + Math.max(8, Math.round(wh * 0.2)) + 'px system-ui,sans-serif';
       ctx.fillStyle = hit ? 'rgba(255,217,207,0.9)' : 'rgba(184,193,212,0.85)';
-      ctx.fillText('↑' + t.elev, sx + wh / 2, sy + wh - 2);
+      ctx.fillText('↑' + fmtValue(t.elev, units), sx + wh / 2, sy + wh - 2);
       ctx.textBaseline = 'middle';
     }
   });

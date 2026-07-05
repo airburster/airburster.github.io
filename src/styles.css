@@ -67,6 +67,7 @@ canvas{display:block;max-width:100%}
 .share-btn.copied{background:var(--air);color:var(--accent-ink)}
 .toprow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .toprow .tabs{margin-bottom:0}
+.opts{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .unit-toggle{display:inline-flex;align-items:center;gap:6px}
 .tabs{display:flex;gap:6px;margin-bottom:16px}
 .tab{

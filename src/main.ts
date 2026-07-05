@@ -1,10 +1,12 @@
 import './styles.css';
-import { SHAPES, DIRS, SIZE_NAME } from './constants';
+import { SHAPES, DIRS, SIZE_NAME, SIZE_LETTER } from './constants';
 import { computeCells, targetHit } from './geometry';
 import { drawGrid } from './render/grid';
 import { drawSide } from './render/side';
 import { getParams, serializeTargets, parseTargets } from './state';
 import type { Sliders } from './state';
+import { fmtValue, fmtReach, unitLabel, squareLabel, stepLabel } from './units';
+import type { Units } from './units';
 import { $ } from './dom';
 import type { ShapeName, Metric, Target, Cell, Params, ZMap, GridView } from './types';
 
@@ -15,6 +17,7 @@ type Tool = 'place' | 'delete';
 const state = {
   shape: 'cone' as ShapeName,
   metric: 'geom' as Metric,
+  units: 'ft' as Units, // display-only; the model is always in feet
   targets: [] as Target[],
   brush: 1,
   tool: 'place' as Tool,
@@ -32,15 +35,17 @@ const sHeight = $<HTMLInputElement>('sHeight');
 const sTilt = $<HTMLInputElement>('sTilt');
 const sDir = $<HTMLInputElement>('sDir');
 const sCylH = $<HTMLInputElement>('sCylH');
+const sEma = $<HTMLInputElement>('sEma');
 const gridCanvas = $<HTMLCanvasElement>('gridCanvas');
 const sideCanvas = $<HTMLCanvasElement>('sideCanvas');
-const sliders: Sliders = { cone: sCone, height: sHeight, tilt: sTilt, dir: sDir, cylH: sCylH };
+const sliders: Sliders = { cone: sCone, height: sHeight, tilt: sTilt, dir: sDir, cylH: sCylH, ema: sEma };
 
 function updateLabels(): void {
   const p = getParams(state.shape, state.metric, sliders);
-  $('vCone').textContent = String(p.size);
-  $('vHeight').textContent = String(p.H);
-  $('vCylH').textContent = String(p.cylH);
+  $('vCone').textContent = fmtValue(p.size, state.units);
+  $('vHeight').textContent = fmtValue(p.H, state.units);
+  $('vCylH').textContent = fmtValue(p.cylH, state.units);
+  $('vEma').textContent = SIZE_NAME[p.emaN] + ' (' + SIZE_LETTER[p.emaN] + ')';
   $('vTilt').textContent = String(Math.abs(p.tilt));
   $('tiltDir').textContent = p.tilt < 0 ? '(up)' : p.tilt > 0 ? '(down)' : '(level)';
   const near = ((Math.round(p.dir) % 8) + 8) % 8; // nearest compass point
@@ -76,8 +81,8 @@ function updateStats(cells: Cell[], p: Params, zmap: ZMap): void {
   const ms = cells.reduce((m, c) => Math.max(m, c.slant), 0);
   $('sGndSq').textContent = String(g.length);
   $('sAirSq').textContent = String(a.length);
-  $('sGndR').textContent = Math.round(mg) + 'ft';
-  $('sFwdR').textContent = Math.round(ms) + 'ft';
+  $('sGndR').textContent = fmtReach(mg, state.units);
+  $('sFwdR').textContent = fmtReach(ms, state.units);
   $('clearNote').style.display = g.length === 0 && p.H > 0 ? 'block' : 'none';
   const hitN = state.targets.reduce((n, t) => n + (targetHit(t, zmap) ? 1 : 0), 0);
   $('targetStat').textContent = state.targets.length ? ` · ${hitN}/${state.targets.length} hit` : '';
@@ -98,8 +103,9 @@ function redraw(): void {
     selected: state.selected,
     gridW: state.dims.GRID_W,
     gridH: state.dims.GRID_H,
+    units: state.units,
   });
-  drawSide(sideCanvas, cells, p, state.dims.SIDE_H, state.targets, zmap);
+  drawSide(sideCanvas, cells, p, state.dims.SIDE_H, state.targets, zmap, state.units);
   updateStats(cells, p, zmap);
 }
 
@@ -127,6 +133,7 @@ function setShape(s: ShapeName): void {
   sCone.step = String(SIZE_STEP);
   sCone.value = String(Math.min(maxSize, Math.max(SIZE_MIN, +sCone.value)));
   $('boxCylH').style.display = cfg.cylH ? '' : 'none';
+  $('boxEma').style.display = s === 'emanation' ? '' : 'none';
   $('boxTilt').style.display = cfg.tilt ? '' : 'none';
   $('boxDir').style.display = cfg.dir ? '' : 'none';
 }
@@ -157,8 +164,32 @@ function setMetric(m: Metric): void {
   writeHash();
 }
 
+// Display units (ft <-> m). This is purely a display relabelling of the same
+// square-counted model, so it's a local preference (localStorage) kept OUT of the
+// share URL -- a shared link renders in whatever units the viewer prefers.
+const UNITS_KEY = 'airburster-units';
+function applyUnits(u: Units): void {
+  state.units = u;
+  $('unitFt').classList.toggle('active', u === 'ft');
+  $('unitM').classList.toggle('active', u === 'm');
+  document.querySelectorAll('.js-unit').forEach((e) => (e.textContent = unitLabel(u)));
+  document.querySelectorAll('.js-square').forEach((e) => (e.textContent = squareLabel(u)));
+  $('elevDown').textContent = '–' + stepLabel(u); // one square down/up (5 ft = 1 m)
+  $('elevUp').textContent = '+' + stepLabel(u);
+}
+function setUnits(u: Units): void {
+  applyUnits(u);
+  try {
+    localStorage.setItem(UNITS_KEY, u);
+  } catch {
+    /* private mode / storage disabled: units just won't persist */
+  }
+  updateTools(); // refresh the selected-token elevation label
+  redraw();
+}
+
 // --- shareable URL state: shape + each control's value as a short hash key ---
-const CTRLS: Record<string, HTMLInputElement> = { h: sHeight, t: sTilt, d: sDir, y: sCylH };
+const CTRLS: Record<string, HTMLInputElement> = { h: sHeight, t: sTilt, d: sDir, y: sCylH, e: sEma };
 function writeHash(): void {
   const parts = ['s=' + state.shape];
   if (state.metric !== 'geom') parts.push('m=' + state.metric); // omit default -> geom links stay unchanged
@@ -208,7 +239,7 @@ shareBtn.addEventListener('click', async () => {
   }, 1400);
 });
 
-[sCone, sHeight, sTilt, sDir, sCylH].forEach((s) =>
+[sCone, sHeight, sTilt, sDir, sCylH, sEma].forEach((s) =>
   s.addEventListener('input', () => {
     redraw();
     writeHash();
@@ -238,7 +269,7 @@ function updateTools(): void {
   $('elevPanel').style.display = sel ? '' : 'none';
   if (sel) {
     const t = state.targets[state.selected];
-    $('elevLabel').textContent = `#${state.selected + 1} ${SIZE_NAME[t.n]} · elev ${t.elev || 0} ft`;
+    $('elevLabel').textContent = `#${state.selected + 1} ${SIZE_NAME[t.n]} · elev ${fmtValue(t.elev || 0, state.units)} ${unitLabel(state.units)}`;
   }
   gridCanvas.style.cursor = state.tool === 'place' ? 'crosshair' : 'pointer';
 }
@@ -284,6 +315,8 @@ $('elevDown').addEventListener('click', () => changeElev(-5));
 $('elevUp').addEventListener('click', () => changeElev(5));
 $('modeGeom').addEventListener('click', () => setMetric('geom'));
 $('modePf2e').addEventListener('click', () => setMetric('pf2e'));
+$('unitFt').addEventListener('click', () => setUnits('ft'));
+$('unitM').addEventListener('click', () => setUnits('m'));
 gridCanvas.addEventListener('click', (e) => {
   const { ox, oy, CELL } = state.grid;
   const r = gridCanvas.getBoundingClientRect();
@@ -353,6 +386,7 @@ window.addEventListener('load', () => {
 
 setShape(state.shape);
 readHash();
+applyUnits(localStorage.getItem(UNITS_KEY) === 'm' ? 'm' : 'ft'); // restore local pref
 updateTools();
 measureGrid();
 redraw();

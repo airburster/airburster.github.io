@@ -1,5 +1,7 @@
 import { C_GROUND, C_GROUND_RGB, HALF } from '../constants';
-import { horizVec, targetHit } from '../geometry';
+import { horizVec, targetHit, emanatorBox } from '../geometry';
+import { fmtReach } from '../units';
+import type { Units } from '../units';
 import type { Cell, Params, Target, ZMap } from '../types';
 
 // Side view = vertical cross-section through the aim axis. World feet: origin at
@@ -12,6 +14,7 @@ export function drawSide(
   sideH: number,
   targets: Target[],
   zmap: ZMap,
+  units: Units,
 ): void {
   const ctx = canvas.getContext('2d')!;
   const W = 200;
@@ -28,7 +31,7 @@ export function drawSide(
   const lbl = 'rgba(255,255,255,0.4)';
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, Hc);
-  const { shape, size, H, tilt, dir, cylH } = p;
+  const { shape, size, H, tilt, dir, cylH, emaN } = p;
   const tiltRad = (tilt * Math.PI) / 180;
   const topA = tiltRad - HALF;
   const botA = tiltRad + HALF;
@@ -49,11 +52,18 @@ export function drawSide(
       const a = topA + ((botA - topA) * i) / 24;
       ext(Math.cos(a) * size, Math.sin(a) * size);
     }
-  } else if (shape === 'burst' || shape === 'emanation') {
+  } else if (shape === 'burst') {
     ext(-size, 0);
     ext(size, 0);
     ext(0, -size);
     ext(0, size);
+  } else if (shape === 'emanation') {
+    // capsule: the footprint segment [x0,x1] grown by the radius in every direction
+    const box = emanatorBox(emaN);
+    ext(box.x0 - size, 0);
+    ext(box.x1 + size, 0);
+    ext(box.x0, -size);
+    ext(box.x1, size);
   } else if (shape === 'cylinder') {
     // a column: width +/-R at the base (origin), rising cylH (negative y = up)
     ext(-size, 0);
@@ -156,12 +166,28 @@ export function drawSide(
     ctx.moveTo(ax, ay);
     ctx.lineTo(ax + Math.cos(botA) * L, ay + Math.sin(botA) * L);
     ctx.stroke();
-  } else if (shape === 'burst' || shape === 'emanation') {
+  } else if (shape === 'burst') {
     ctx.beginPath();
     ctx.arc(ax, ay, L, 0, 7);
     ctx.fill();
     ctx.beginPath();
     ctx.arc(ax, ay, L, 0, 7);
+    ctx.stroke();
+  } else if (shape === 'emanation') {
+    // horizontal capsule: two radius-L caps at the footprint edges, joined flat
+    const box = emanatorBox(emaN);
+    const capL = PX(box.x0, 0)[0];
+    const capR = PX(box.x1, 0)[0];
+    const yTop = ay - L;
+    const yBot = ay + L;
+    ctx.beginPath();
+    ctx.moveTo(capL, yTop);
+    ctx.lineTo(capR, yTop);
+    ctx.arc(capR, ay, L, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(capL, yBot);
+    ctx.arc(capL, ay, L, Math.PI / 2, Math.PI * 1.5);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
   } else if (shape === 'cylinder') {
     // a rectangle: base at the origin (y=0), rising cylH (negative y = up)
@@ -212,7 +238,7 @@ export function drawSide(
     ctx.fillStyle = lbl;
     ctx.font = '10px system-ui,sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(H + 'ft', ax - 5, (ay + gY) / 2 + 4);
+    ctx.fillText(fmtReach(H, units), ax - 5, (ay + gY) / 2 + 4);
   }
 
   // Placed tokens: coral when the effect catches the body, grey when clear

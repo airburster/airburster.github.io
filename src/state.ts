@@ -7,6 +7,7 @@ export interface Sliders {
   tilt: HTMLInputElement;
   dir: HTMLInputElement;
   cylH: HTMLInputElement;
+  ema: HTMLInputElement;
 }
 
 export function getParams(shape: ShapeName, metric: Metric, s: Sliders): Params {
@@ -18,6 +19,7 @@ export function getParams(shape: ShapeName, metric: Metric, s: Sliders): Params 
     tilt: +s.tilt.value,
     dir: +s.dir.value,
     cylH: +s.cylH.value,
+    emaN: +s.ema.value,
   };
 }
 
